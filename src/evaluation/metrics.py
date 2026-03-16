@@ -3,12 +3,27 @@ Comprehensive survival model evaluation metrics.
 
 Includes:
 - C-index (concordance)
+- Uno's C-index (IPCW-weighted)
 - Time-dependent AUC
 - Integrated Brier Score
+- Integrated Calibration Index (ICI)
 - Calibration metrics
 - Subgroup robustness
 - Bootstrap confidence intervals
 - Pairwise model comparison
+
+Censoring Assumptions
+---------------------
+All metrics in this module assume:
+1. Non-informative (independent) censoring: the censoring mechanism is
+   independent of the event process, conditional on covariates.
+2. Right censoring only: observations are censored from the right
+   (we know at least how long a patient survived, but not the exact event time).
+3. Type I censoring for time-dependent metrics: administrative censoring
+   at a fixed study end time.
+
+When censoring may be informative, use Uno's C-index (IPCW-weighted) instead
+of Harrell's C-index, as it accounts for the censoring distribution.
 """
 
 from typing import Dict, List, Optional, Tuple, Union
@@ -383,6 +398,113 @@ class SurvivalMetrics:
         return point_estimate, ci_lower, ci_upper
 
     @staticmethod
+    def unos_concordance_index(
+        y_event: np.ndarray,
+        y_time: np.ndarray,
+        predictions: np.ndarray,
+        tau: Optional[float] = None,
+    ) -> float:
+        """
+        Uno's C-index (inverse-probability-of-censoring weighted).
+
+        More robust than Harrell's C-index when censoring is informative.
+        Uses IPCW to account for censoring distribution.
+
+        Parameters
+        ----------
+        y_event : ndarray
+            Event indicator.
+        y_time : ndarray
+            Survival time.
+        predictions : ndarray
+            Predicted risk scores.
+        tau : float, optional
+            Truncation time. If None, use max observed event time.
+
+        Returns
+        -------
+        c_index : float
+            Uno's C-index.
+        """
+        from sksurv.metrics import concordance_index_ipcw
+
+        # Create structured arrays for sksurv
+        y_train = np.array(
+            [(bool(e), t) for e, t in zip(y_event, y_time)],
+            dtype=[('event', bool), ('time', float)]
+        )
+
+        if tau is None:
+            tau = y_time[y_event.astype(bool)].max()
+
+        try:
+            c_index, _, _, _, _ = concordance_index_ipcw(
+                y_train, y_train, predictions, tau=tau
+            )
+            return c_index
+        except Exception:
+            return np.nan
+
+    @staticmethod
+    def integrated_calibration_index(
+        y_event: np.ndarray,
+        y_time: np.ndarray,
+        predicted_survival_probs: np.ndarray,
+        times: np.ndarray,
+    ) -> float:
+        """
+        Integrated Calibration Index (ICI) for time-dependent calibration.
+
+        Measures the mean absolute difference between predicted and observed
+        survival probabilities across the full range of predictions.
+
+        Parameters
+        ----------
+        y_event : ndarray
+            Event indicator.
+        y_time : ndarray
+            Survival time.
+        predicted_survival_probs : ndarray, shape (n_samples,)
+            Predicted survival probabilities at a specific time point.
+        times : ndarray
+            Time points for evaluation.
+
+        Returns
+        -------
+        ici : float
+            Integrated Calibration Index (lower is better).
+        """
+        from sklearn.isotonic import IsotonicRegression
+
+        ici_values = []
+        for t_idx, t in enumerate(times):
+            if t_idx >= predicted_survival_probs.shape[1] if predicted_survival_probs.ndim > 1 else True:
+                break
+
+            pred_surv = predicted_survival_probs[:, t_idx] if predicted_survival_probs.ndim > 1 else predicted_survival_probs
+
+            # Observed: did the patient survive past time t?
+            observed = (y_time > t).astype(float)
+            # Only use uncensored or censored after t
+            usable = (y_event.astype(bool)) | (y_time > t)
+
+            if usable.sum() < 10:
+                continue
+
+            pred_sub = pred_surv[usable]
+            obs_sub = observed[usable]
+
+            # Fit isotonic regression (calibration curve)
+            ir = IsotonicRegression(out_of_bounds='clip')
+            calibrated = ir.fit_transform(pred_sub, obs_sub)
+
+            # ICI = mean |predicted - calibrated|
+            ici_t = np.mean(np.abs(pred_sub - calibrated))
+            ici_values.append(ici_t)
+
+        return np.mean(ici_values) if ici_values else np.nan
+
+    @staticmethod
     def pairwise_model_comparison(
         y_event: np.ndarray,
         y_time: np.ndarray,
@@ -491,6 +613,9 @@ class SurvivalMetrics:
 
         # C-index
         results["c_index"] = SurvivalMetrics.concordance_index(y_event, y_time, predictions)
+
+        # Uno's C-index (IPCW)
+        results["unos_c_index"] = SurvivalMetrics.unos_concordance_index(y_event, y_time, predictions)
 
         # Time-dependent AUC
         auc_dict = SurvivalMetrics.time_dependent_auc(y_event, y_time, predictions)

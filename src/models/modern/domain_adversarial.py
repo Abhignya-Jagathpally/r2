@@ -236,7 +236,8 @@ class DANN(pl.LightningModule):
         """
         features = self.extractor(x)
         log_hazard = self.survival_head(features)
-        domain_logits = self.domain_discriminator(features)
+        reversed_features = GradientReversal.apply(features, self.gradient_reversal_weight)
+        domain_logits = self.domain_discriminator(reversed_features)
         return log_hazard, domain_logits
 
     def _compute_coral_loss(

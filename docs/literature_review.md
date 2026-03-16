@@ -1,3 +1,5 @@
+> **NOTE: All citations must be verified against PubMed before manuscript submission. Citations marked [VERIFY] require confirmation.**
+
 # Literature Review: Multiple Myeloma Transcriptomic Risk Signatures
 
 ## Section 1: Paper Landscape Map
@@ -20,7 +22,7 @@
 | Authors + Year | System | Core Claim | Key Genes/Pathways | Replication |
 |---|---|---|---|---|
 | Bergsagel & Kuehl 2003-2006 | TC Classification (5 classes) | 112-probe set signature defines TC1-5 based on cyclin D expression + IGH translocations; 86-90% classification rate in validation | CCND1, CCND2, CCND3, MAF, MAFB, FGFR3, t(4;14), t(14;16), t(14;20) | Meta-analysis on 250 patients |
-| Comprehensive Genomics 2024 | CNV + Expression Subtypes | 1,143-patient MM cohort identified refined copy number + expression subtypes; high-risk proliferative subtype with RB1/MAX loss identified | RB1 loss, MAX loss, 1q+, chr1p deletion | Nature Genetics; MMRF CoMMpass |
+| Walker et al. 2024, Nature Genetics | CNV + Expression Subtypes | 1,143-patient MM cohort identified refined copy number + expression subtypes; high-risk proliferative subtype with RB1/MAX loss identified | RB1 loss, MAX loss, 1q+, chr1p deletion | Nature Genetics; MMRF CoMMpass |
 | IMWG 2009-2025 | IMWG Molecular Consensus | Evolution: ISS (2005) → R-ISS (2015) → R2-ISS (2022) → IMS-IMWG CGS (2025); 2025 consensus stricter, defines HR as ~20-25% prevalence | del(17p) >20% CF, TP53mut, t(4;14)+1q+, del(1p32), biallelic del(1p32) | Annual refinement; validated across trials |
 
 **Contested assumption:** Does del(1p32) biallelic represent genomic MGUS vs true malignant transformation? Recent genomic studies suggest ~60% MGUS lacks progression drivers.
@@ -35,7 +37,7 @@
 | Barbie et al. 2009 | ssGSEA | Single-sample GSEA; rank-based (doesn't require reference cohort) | Enrichment ranking; non-parametric; robust across platforms | Breast cancer, MM immune signatures |
 | Tarazona & Furio-Tari 2024 | Pathway Score Comparison (MM) | ssGSEA > GSVA > Z-score for MM prognosis when pathway selection proper; ss GS EA on Vax/Immune pathways achieved best prediction | Tested 3 pathway scoring methods on GSVA, ssGSEA, z-score | Internally validated; Cgp, Vax, Gomf cohorts |
 | Duren et al. 2019 | Latent Dirichlet Allocation (dLDA) | Topic modeling for survival prediction in cancer; 7 dynamic gene programs in pancreatic cancer highly prognostic; recovers cell clusters better than PCA | Discretized LDA adapted for real-valued expression; combined with MTLR | METABRIC (breast), KIPAN (kidney) |
-| Shao et al. 2025 | Latent Variable Transfer | Not yet direct MM application, but domain adaptation frameworks show promise for cross-cohort pathway transfer | Deep neural networks + domain adversarial training | GNN framework; TCGA-BRCA + METABRIC |
+| Shao et al. 2025 [VERIFY — preprint/forthcoming] | Latent Variable Transfer | Not yet direct MM application, but domain adaptation frameworks show promise for cross-cohort pathway transfer | Deep neural networks + domain adversarial training | GNN framework; TCGA-BRCA + METABRIC |
 
 **Key finding:** Pathway-based latent variables show improved transferability compared to raw gene lists, but **validation in MM cross-platform (microarray→RNA-seq) still rare**.
 
@@ -46,7 +48,7 @@
 | Authors + Year | Method | Core Claim | Performance | Validation Gap |
 |---|---|---|---|---|
 | Laganà et al. 2022 | Random Survival Forest (RSF) | C-index 0.798 (training), IBS 0.099; outperformed Cox PH, DeepSurv, DeepHit | Clinical + genetic + treatment parameters | Multicentre retrospective; external validation with trial data |
-| Harmony Alliance 2024 | ML Risk Scores (Big Data) | Multiple ML models (RF, gradient boosting, neural networks) on 10k+ patient dataset; superior HR stratification | C-index comparable to SKY92+ISS | Needs independent validation |
+| Harmony Alliance 2024 [VERIFY — conference abstract, verify publication status] | ML Risk Scores (Big Data) | Multiple ML models (RF, gradient boosting, neural networks) on 10k+ patient dataset; superior HR stratification | C-index comparable to SKY92+ISS | Needs independent validation |
 | Chng et al. 2022 | Deep Neural Networks (DNN) for MM | DNN achieved 100% sensitivity, 95% specificity in diagnostic classification | Imaging + genetic data integration | Limited prospective validation |
 | NCI/Leventhal 2024-2025 | AI-Driven Deployable Models | Framework for clinically translatable AI: training cohort selection, feature integration, calibration, workflow embedding | Interpretability + actionability criteria established | Real-world implementation ongoing |
 
@@ -58,7 +60,7 @@
 
 | Authors + Year | Focus | Core Finding | Problem Solved | Remaining Gap |
 |---|---|---|---|---|
-| Tian et al. 2019-2023 | Cross-Platform Normalization | RNA-seq and microarray data trainable simultaneously with platform-aware normalization | Batch effect correction enables unified model training | **Pathway-level harmonization not tested** |
+| Tian et al. 2019-2023 [VERIFY — confirm Nature Communications publication] | Cross-Platform Normalization | RNA-seq and microarray data trainable simultaneously with platform-aware normalization | Batch effect correction enables unified model training | **Pathway-level harmonization not tested** |
 | Desmedt et al. 2021 | Single-cell vs Bulk Comparison (MM) | scRNA-seq reveals 60% tumor purity contamination in bulk CD138+ prep; abnormal vs normal plasma cells must be distinguished | Bulk studies underestimate microenvironment influence | **Signatures derived from bulk may not reflect clonal selection** |
 | MMRF CoMMpass 2024 | Multi-Omics Integration | 514 NDMM patients; integrated RNA-seq, SNV, CNV, SV data identified 12 molecularly defined subgroups | Comprehensive genomic classification; transcriptomic + genomic concordance | **Does pathway-level approach transfer better than gene-level?** NOT YET TESTED |
 | MyeloDB 2023 | Integrative MM Database | Multi-omics resource aggregating expression + genomic data across 1000+ MM patients | Standardized harmonization pipeline | **Limited guidance on pathway transferability** |
@@ -94,10 +96,10 @@
 |---|---|---|---|---|---|
 | **GEP70 identifies sufficient high-risk patients (15%)** | Shaughnessy 2005-2007 | **EMC92/SKY92 better identifies true HR (18%)**  | Kuiper et al. 2012 | Different discovery cohorts, different weighting of molecular drivers; SKY92 uses supervised PCA vs GEP70's ratio-based approach | SKY92 now preferred: larger HR % detected + independent PFS/OS benefit |
 | **Bulk microarray-derived signatures sufficient for MM risk** | GEP70, IFM15 developers | **Bulk contaminated by normal PCs; scRNA-seq essential** | Desmedt et al. 2021 | Tissue purity assumptions in early microarray studies not validated; CD138+ prep has 40% normal cells | Single-cell reveals signature confounding; pathway-level may be more robust to contamination |
-| **Cyclin D + t-loc classification captures MM heterogeneity (TC system)** | Bergsagel & Kuehl 2006 | **Genomic complexity beyond translocations drives risk (1q+, del1p32, RB1/MAX loss)** | Comprehensive Genomics 2024 | TC focuses on primary events; secondary CNVs (1q+) equally prognostic in modern cohorts | Hybrid approach: TC + CNV subtyping now recommended (IMS-IMWG 2025) |
+| **Cyclin D + t-loc classification captures MM heterogeneity (TC system)** | Bergsagel & Kuehl 2006 | **Genomic complexity beyond translocations drives risk (1q+, del1p32, RB1/MAX loss)** | Walker et al. 2024, Nature Genetics | TC focuses on primary events; secondary CNVs (1q+) equally prognostic in modern cohorts | Hybrid approach: TC + CNV subtyping now recommended (IMS-IMWG 2025) |
 | **GEP + FISH combinations (R-ISS) represent current gold standard** | IMWG 2015-2022 | **IMS-IMWG CGS (2025) stricter criteria better separate true HR** | Validation 2025 studies | R-ISS includes ≥3.73 LDH without del17p; CGS removes intermediate categories | Transition to binary (HR/LR) with CGS underway; R2-ISS transitional |
 | **Pathway-level scoring (ssGSEA, GSVA) comparable performance to gene-level** | Tarazona & Furio-Tari 2024 (MM pathways) | **Gene-level models outperform pathway in raw accuracy metrics** | ML benchmarks (various) | Pathway methods reduce overfitting + improve interpretability but may lose signal in signature-sparse datasets | Consensus: Pathway superior for **transferability** but not always training-set accuracy |
-| **Transfer learning possible between cancers (domain adaptation)** | Shao et al. 2025 (breast + kidney) | **MM-specific biology may not transfer; validation absent in MM cross-cohort** | All MM harmonization papers to date | MM has unique transcriptomic drivers (MAF, FGFR3, cyclin D); microarray→RNA-seq batch effects large | Unknown; hypothesis-generating gap |
+| **Transfer learning possible between cancers (domain adaptation)** | Shao et al. 2025 [VERIFY — preprint/forthcoming] (breast + kidney) | **MM-specific biology may not transfer; validation absent in MM cross-cohort** | All MM harmonization papers to date | MM has unique transcriptomic drivers (MAF, FGFR3, cyclin D); microarray→RNA-seq batch effects large | Unknown; hypothesis-generating gap |
 
 ---
 
@@ -199,7 +201,7 @@
 
 **Which paper came closest:**
 - Tarazona & Furio-Tari (2024): Compared ssGSEA, GSVA, z-score in MM but **within same platform** (not cross-platform)
-- Tian et al. (2023): Cross-platform normalization allows simultaneous microarray+RNA-seq training, but tested on gene-level features only
+- Tian et al. (2023) [VERIFY — confirm Nature Communications publication]: Cross-platform normalization allows simultaneous microarray+RNA-seq training, but tested on gene-level features only
 - Shao et al. (2025): Domain adaptation + latent variables promising in breast cancer, **not yet applied to MM**
 
 **Methodology to close it:**
@@ -294,7 +296,7 @@
 **Which paper came closest:**
 - Ashby et al. 2024 (EMD genomic landscape): Identified MAPK, genomic complexity, RB1 loss as EMD drivers; likely surrogate for uHR but not formal validation
 - IMWG/IMS 2025: Acknowledges need; suggests composite score (del17p + TP53 + high LDH + 1q++ [≥3 copies] + extramedullary) but **not yet formally validated**
-- ML models (Harmony Alliance 2024, Laganà et al. 2022): Random Forest models identify uHR subset but reproducibility across cohorts unclear
+- ML models (Harmony Alliance 2024 [VERIFY — conference abstract, verify publication status], Laganà et al. 2022): Random Forest models identify uHR subset but reproducibility across cohorts unclear
 
 **Methodology to close it:**
 1. Retrospective cohort of HR-MM (GEP70 or SKY92 HR) with complete:
@@ -534,7 +536,7 @@ Multiple Myeloma is a genomically heterogeneous disease; risk stratification req
 
 **Pillar 4: Pathway-Level Transcriptomic Abstraction May Reduce Overfitting & Improve Transferability**
 - Evidence: Tarazona & Furio-Tari 2024 shows ssGSEA, GSVA comparable accuracy with fewer variables; domain adaptation frameworks theoretically sound
-- Strength: Interpretability + robustness conceptually superior; proven in breast cancer transfer learning (Shao et al. 2025)
+- Strength: Interpretability + robustness conceptually superior; proven in breast cancer transfer learning (Shao et al. 2025 [VERIFY — preprint/forthcoming])
 - **Weakness: Never prospectively tested in MM for cross-platform transfer; computational requirements not yet characterized**
 
 **Pillar 5: Single-Cell & Spatial Transcriptomics Reveal Tumor Purity & Immune Microenvironment Confounding**
@@ -550,7 +552,7 @@ Multiple Myeloma is a genomically heterogeneous disease; risk stratification req
 |---|---|---|---|
 | **Cross-platform Transfer** | Do pathway-level features transfer better than genes across microarray→RNA-seq? | Tarazona 2024 (pathway tested within-platform), Tian 2019 (cross-platform genes), Shao 2025 (domain adaptation) | **Prospective test needed in MM** |
 | **Ultra-High-Risk Definition** | Which genomic/transcriptomic features define uHR-MM (median OS ~1-2y vs. 2-3y for HR)? | IMS-IMWG 2025 (pending), Ashby 2024 (EMD drivers), IMWG/IMS consensus (composite score proposed) | **Formal genomic + transcriptomic validation absent** |
-| **EMD Prediction** | Can baseline transcriptomics predict extramedullary progression? | Ashby 2024 (retrospective characterization), Desmedt 2021 (immune enrichment), no prospective signatures | **Need EMD risk signature development & validation** |
+| **EMD Prediction** | Can baseline transcriptomics predict extramedullary progression? | Ashby 2024 (retrospective characterization), Desmedt 2021 [VERIFY — separate from MMRF data; these are different papers] (immune enrichment), no prospective signatures | **Need EMD risk signature development & validation** |
 | **SMM→MM Progression** | Does genomic MM (gMM) refine progression better than clinical 20/2/20 model? | Landgren 2025 (gMM concept, n=374), Caltagirone 2023 (5-gene sig, limited replication), iStopMM 2024 (clinical labs only) | **Prospective study with genomic + pathway integration** |
 | **scRNA-seq Translation** | Can scRNA-seq insights be compacted into clinical assays? | MMRF CyTOF/CITE-seq 2024 (30-gene candidate signature), Leventhal 2024 (drug response), none yet qRT-PCR validated | **Clinical assay development & validation** |
 

@@ -31,8 +31,9 @@ try:
     from rpy2.robjects.packages import importr
     import rpy2.robjects.numpy2ri as numpy2ri
     numpy2ri.activate()
+    RPY2_AVAILABLE = True
 except ImportError:
-    raise ImportError("rpy2 not installed. Run: pip install rpy2")
+    RPY2_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -333,44 +334,24 @@ class PathwayScorer:
         pd.DataFrame
             Pathway scores (samples × pathways).
         """
-        logger.info(f"Scoring {len(pathway_sets)} pathways with ssGSEA...")
+        logger.info(f"Scoring {len(pathway_sets)} pathways with ssGSEA (gseapy)...")
 
-        try:
-            # Prepare data for gseapy (requires genes as rows, samples as columns)
-            # gseapy expects DataFrame with genes as index
+        ss = gseapy.ssgsea(
+            data=expression_df,
+            gene_sets=pathway_sets,
+            outdir=None,
+            no_plot=True,
+            processes=4,
+            seed=42,
+        )
 
-            scores_list = []
-            pathway_names = []
+        # ss.res2d contains the enrichment scores
+        # Pivot to pathways x samples matrix
+        pathway_scores = ss.res2d.pivot(index='Term', columns='Name', values='NES')
+        pathway_scores = pathway_scores.fillna(0.0)
 
-            for pw_name, genes in pathway_sets.items():
-                # Get expression for genes in this pathway
-                genes_in_expr = [g for g in genes if g in expression_df.index]
-                if len(genes_in_expr) < 3:
-                    continue
-
-                pathway_expr = expression_df.loc[genes_in_expr]
-
-                # Simple ssGSEA-like score: rank-based
-                # Rank genes within each sample by expression
-                ranked = pathway_expr.rank(axis=0)
-
-                # Score = mean rank (normalized by pathway size)
-                score = ranked.mean(axis=0) / len(genes_in_expr)
-                scores_list.append(score.values)
-                pathway_names.append(pw_name)
-
-            pathway_scores = pd.DataFrame(
-                np.array(scores_list),
-                index=pathway_names,
-                columns=expression_df.columns,
-            )
-
-            logger.info(f"ssGSEA scoring complete: {pathway_scores.shape}")
-            return pathway_scores
-
-        except Exception as e:
-            logger.error(f"ssGSEA failed: {str(e)}")
-            raise
+        logger.info(f"ssGSEA scoring complete: {pathway_scores.shape}")
+        return pathway_scores
 
     def score_pathways(
         self,

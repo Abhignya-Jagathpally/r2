@@ -129,10 +129,18 @@ class XGBoostSurvivalModel(BaseSurvivalModel):
         # Fit scaler
         X_scaled = self._fit_scaler(X_array)
 
-        # Create DMatrix
-        dmatrix = xgb.DMatrix(X_scaled, label=y_event_array)
-        dmatrix.set_float_info("label_lower_bound", np.zeros_like(y_time_array))
-        dmatrix.set_float_info("label_upper_bound", y_time_array)
+        # Create DMatrix with proper label encoding per objective
+        if self.objective == "survival:aft":
+            dmatrix = xgb.DMatrix(X_scaled)
+            # For AFT: lower_bound = time for all, upper_bound = time for events, +inf for censored
+            y_lower = y_time_array.copy()
+            y_upper = np.where(y_event_array > 0, y_time_array, np.inf)
+            dmatrix.set_float_info("label_lower_bound", y_lower)
+            dmatrix.set_float_info("label_upper_bound", y_upper)
+        else:
+            # survival:cox: label = +time if event, -time if censored
+            y_label = np.where(y_event_array > 0, y_time_array, -y_time_array)
+            dmatrix = xgb.DMatrix(X_scaled, label=y_label)
 
         params = {
             "objective": self.objective,
@@ -343,11 +351,11 @@ class CatBoostSurvivalModel(BaseSurvivalModel):
         # Fit scaler
         X_scaled = self._fit_scaler(X_array)
 
-        # Create pool
+        # Create pool: CatBoost Cox loss expects label = +time if event, -time if censored
+        y_label = np.where(y_event_array > 0, y_time_array, -y_time_array)
         pool = cb.Pool(
             X_scaled,
-            label=y_event_array,
-            weight=y_time_array,  # Use time as weight
+            label=y_label,
         )
 
         self.model_ = cb.CatBoostRegressor(

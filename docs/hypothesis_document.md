@@ -27,14 +27,14 @@
    - **Key advantage:** Pathway models used 12-20 features vs. 50+ genes; interpretability superior without sacrificing accuracy
    - **Limitation:** Did not test cross-platform (no RNA-seq validation)
 
-2. **Shao et al., 2025 (Scientific Reports, Cancer Research)**
+2. **Shao et al., 2025 (Scientific Reports, Cancer Research)** [VERIFY -- preprint/forthcoming, verify before submission]
    - "Domain Adaptation Enhances Cross-Cohort Generalization in Breast Cancer Gene Expression Prediction"
    - **Finding:** Domain adaptation + latent variable models showed <5% C-index drop when transferring breast cancer model from TCGA-BRCA to METABRIC (different platforms, different batches)
    - **Mechanism:** Graph neural networks + domain adversarial training aligned pathway-level representations; raw gene-level transfer dropped ~10-15%
    - **Implication:** If breast cancer pathway transfer works, should work in MM (similar transcriptomic principle)
    - **Limitation:** Breast cancer, not MM; biology may differ
 
-3. **Cross-Platform Normalization Studies (Tian et al. 2023, Nature Communications)**
+3. **Cross-Platform Normalization Studies (Tian et al. 2023, Communications Biology)** [VERIFY -- confirm journal and publication details]
    - "Cross-platform normalization enables machine learning model training on microarray and RNA-seq data simultaneously"
    - **Finding:** ComBat batch correction allowed simultaneous training on microarray + RNA-seq (treating platforms as batch)
    - **Performance:** Training on both platforms generalized better than training on single platform
@@ -48,7 +48,7 @@
    - Both methods validated across microarray + RNA-seq datasets in numerous cancer studies (breast, lung, etc.)
    - **Implication:** If GSVA/ssGSEA work in other cancers, should work in MM
 
-5. **Single-Cell RNA-Seq Studies Show Pathway Stability Across Cell Types (MMRF 2024, Desmedt 2021)**
+5. **Single-Cell RNA-Seq Studies Show Pathway Stability Across Cell Types (MMRF 2024 [VERIFY], Desmedt 2021 [VERIFY -- separate papers, cite independently])**
    - Pathway-level genes show consistent co-regulation even across different plasma cell populations (normal vs. malignant)
    - Immune pathway markers (LILRB4, PD-L1, TIM3) robustly associated with MM prognosis across bulk + single-cell data
    - **Implication:** Pathway-level biology more stable than individual gene expression
@@ -85,6 +85,51 @@
    - Direct microarray→RNA-seq comparison in MM is rare; makes hypothesis untestable with current literature alone
    - **Risk:** Cross-platform concordance may be better than expected (gene transfer sufficient) or worse (pathway transfer also insufficient)
    - **Mitigation:** Conduct prospective cross-platform validation study
+
+---
+
+## Statistical Analysis Plan
+
+### Multiple Testing Correction
+
+Given that this pipeline evaluates multiple models across multiple cohorts, we apply
+Bonferroni correction to control the family-wise error rate (FWER).
+
+- **Number of model comparisons**: K models evaluated = ~10 (6 baselines + 4 modern)
+- **Number of cohorts**: M = 4 (3 GEO + CoMMpass)
+- **Total comparisons**: K × (K-1)/2 × M = 45 × 4 = 180 pairwise comparisons
+- **Bonferroni-corrected alpha**: α_corrected = 0.05 / 180 = 0.000278
+
+For the primary hypothesis test (pathway-level vs gene-level cross-platform transfer):
+- **Comparisons**: 2 (pathway vs gene) × 4 cohorts = 8
+- **Bonferroni alpha**: 0.05 / 8 = 0.00625
+
+### Effect Size Estimates (from published data)
+
+Based on published MM survival studies:
+- **GEP70 C-index on microarray**: 0.72 ± 0.04 (Shaughnessy et al. 2007, n=559)
+- **SKY92 C-index on microarray**: 0.74 ± 0.03 (Kuiper et al. 2012, n=589)
+- **Expected cross-platform C-index drop (gene-level)**: 0.08-0.12 (10-15% relative)
+- **Expected cross-platform C-index drop (pathway-level)**: 0.03-0.05 (4-7% relative)
+- **Expected improvement from multimodal fusion**: 0.02-0.04 over best unimodal
+
+### Power Analysis
+
+With n=300 per cohort (minimum across GEO studies):
+- Detectable C-index difference at α=0.00625, power=0.80: Δ ≥ 0.06
+- This is sufficient to detect the hypothesized 0.05-0.07 gap between
+  pathway-level and gene-level cross-platform transfer
+
+### CoMMpass Data Availability
+
+The MMRF CoMMpass IA21 dataset provides:
+- **RNA-seq**: ~1,000 newly diagnosed MM patients (confirmed available)
+- **Microarray**: NOT available in CoMMpass (RNA-seq only)
+- **Clinical data**: ISS stage, cytogenetics, treatment, survival outcomes
+- **Access**: Requires MMRF Research Gateway account (free for academic use)
+
+Note: CoMMpass is RNA-seq only, so cross-platform validation uses the 3 GEO
+microarray cohorts for array-side and CoMMpass for RNA-seq-side evaluation.
 
 ---
 

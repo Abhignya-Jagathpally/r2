@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
-from sksurv.preprocessing import Standardizer
+from sklearn.preprocessing import StandardScaler as Standardizer
 from sksurv.util import Surv
 from sklearn.model_selection import KFold
 
@@ -196,9 +196,9 @@ class SparseGroupLassoCoxModel(BaseSurvivalModel):
         ll = 0.0
 
         for i in range(n_samples):
-            if y_struct.event[i]:
-                # Risk set at time y_struct.time[i]
-                at_risk = y_struct.time >= y_struct.time[i]
+            if y_struct['event'][i]:
+                # Risk set at time y_struct['time'][i]
+                at_risk = y_struct['time'] >= y_struct['time'][i]
                 risk_set_exp_eta = exp_eta[at_risk].sum()
 
                 if risk_set_exp_eta > 0:
@@ -237,8 +237,8 @@ class SparseGroupLassoCoxModel(BaseSurvivalModel):
         grad = np.zeros(n_features)
 
         for i in range(n_samples):
-            if y_struct.event[i]:
-                at_risk = y_struct.time >= y_struct.time[i]
+            if y_struct['event'][i]:
+                at_risk = y_struct['time'] >= y_struct['time'][i]
                 risk_set_exp_eta = exp_eta[at_risk].sum()
 
                 if risk_set_exp_eta > 0:
@@ -374,12 +374,12 @@ class SparseGroupLassoCoxModel(BaseSurvivalModel):
 
         eta = X @ self.coef_
         exp_eta = np.exp(eta)
-        event_times = y_struct.time[y_struct.event]
+        event_times = y_struct['time'][y_struct['event']]
         baseline_hazard = {}
 
         for t in np.unique(event_times):
-            at_event = (y_struct.time == t) & y_struct.event
-            at_risk = y_struct.time >= t
+            at_event = (y_struct['time'] == t) & y_struct['event']
+            at_risk = y_struct['time'] >= t
 
             d_t = at_event.sum()
             s_t = exp_eta[at_risk].sum()

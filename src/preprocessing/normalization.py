@@ -33,8 +33,9 @@ try:
     from rpy2.robjects.packages import importr
     import rpy2.robjects.numpy2ri as numpy2ri
     numpy2ri.activate()
+    RPY2_AVAILABLE = True
 except ImportError:
-    raise ImportError("rpy2 not installed. Run: pip install rpy2")
+    RPY2_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -169,28 +170,25 @@ class ExpressionNormalizer:
         """
         logger.info("Quantile normalizing expression matrix...")
 
-        # Sort each column (sample)
-        sorted_df = expression_df.rank(method="average").apply(
-            lambda x: sorted(expression_df.iloc[:, x.name])
+        from sklearn.preprocessing import QuantileTransformer
+
+        qt = QuantileTransformer(
+            n_quantiles=min(expression_df.shape[0], 1000),
+            output_distribution='normal',
+            random_state=42,
         )
 
-        # Compute target distribution (mean across all samples)
-        if target_quantiles is None:
-            target_quantiles = sorted_df.mean(axis=1).values
+        # QuantileTransformer works on samples x features, expression_df is genes x samples
+        # Transpose, fit_transform, transpose back
+        normalized_values = qt.fit_transform(expression_df.T.values).T
 
-        # Replace with target quantiles
         normalized_df = pd.DataFrame(
-            np.zeros_like(sorted_df.values),
+            normalized_values,
             index=expression_df.index,
             columns=expression_df.columns,
-            dtype=float,
         )
 
-        for i, sample in enumerate(expression_df.columns):
-            rank_indices = expression_df[sample].rank(method="average").values - 1
-            normalized_df.iloc[:, i] = target_quantiles[rank_indices.astype(int)]
-
-        fitted_params = {"target_quantiles": target_quantiles}
+        fitted_params = {"method": "quantile_transformer", "n_quantiles": qt.n_quantiles_}
         self.fitted_params["quantile_norm"] = fitted_params
         self.contract.add_params(normalization_method="quantile")
 
@@ -218,67 +216,95 @@ class ExpressionNormalizer:
         """
         logger.info("TMM normalizing RNA-seq counts...")
 
-        try:
-            # Import R packages
-            edger = importr("edgeR")
-            limma = importr("limma")
+        # Try rpy2+edgeR first
+        if RPY2_AVAILABLE:
+            try:
+                # Import R packages
+                edger = importr("edgeR")
+                limma = importr("limma")
 
-            # Convert to R DataFrame
-            r_counts = ro.convert2ri(count_matrix.values)
-            r_genes = ro.StrVector(count_matrix.index.tolist())
-            r_samples = ro.StrVector(count_matrix.columns.tolist())
+                # Convert to R DataFrame
+                r_counts = ro.convert2ri(count_matrix.values)
+                r_genes = ro.StrVector(count_matrix.index.tolist())
+                r_samples = ro.StrVector(count_matrix.columns.tolist())
 
-            # Create DGEList
-            dge = edger.DGEList(counts=r_counts)
-            dge = edger.calcNormFactors(dge, method="TMM")
+                # Create DGEList
+                dge = edger.DGEList(counts=r_counts)
+                dge = edger.calcNormFactors(dge, method="TMM")
 
-            # Get norm factors
-            norm_factors = np.array(dge.slots["samples"].slots["norm.factors"])
-            log_cpm_r = edger.cpm(dge, log=True, prior_count=2)
-            log_cpm = np.array(log_cpm_r)
+                # Get norm factors
+                norm_factors = np.array(dge.slots["samples"].slots["norm.factors"])
+                log_cpm_r = edger.cpm(dge, log=True, prior_count=2)
+                log_cpm = np.array(log_cpm_r)
 
-            # Create normalized dataframe
-            normalized_df = pd.DataFrame(
-                log_cpm,
-                index=count_matrix.index,
-                columns=count_matrix.columns,
-            )
-
-            fitted_params = {
-                "norm_factors": norm_factors.tolist(),
-                "method": "TMM",
-                "prior_count": 2,
-            }
-
-            if use_voom:
-                logger.info("Applying voom transformation...")
-                design_matrix = np.ones((count_matrix.shape[1], 1))
-                v_obj = limma.voom(dge, design=ro.r("matrix(1, nrow=ncol(counts), ncol=1)"))
-                voom_expr = np.array(v_obj.slots["E"])
+                # Create normalized dataframe
                 normalized_df = pd.DataFrame(
-                    voom_expr,
+                    log_cpm,
                     index=count_matrix.index,
                     columns=count_matrix.columns,
                 )
-                fitted_params["voom_applied"] = True
 
+                fitted_params = {
+                    "norm_factors": norm_factors.tolist(),
+                    "method": "TMM",
+                    "prior_count": 2,
+                }
+
+                if use_voom:
+                    logger.info("Applying voom transformation...")
+                    design_matrix = np.ones((count_matrix.shape[1], 1))
+                    v_obj = limma.voom(dge, design=ro.r("matrix(1, nrow=ncol(counts), ncol=1)"))
+                    voom_expr = np.array(v_obj.slots["E"])
+                    normalized_df = pd.DataFrame(
+                        voom_expr,
+                        index=count_matrix.index,
+                        columns=count_matrix.columns,
+                    )
+                    fitted_params["voom_applied"] = True
+
+                self.fitted_params["tmm_norm"] = fitted_params
+                self.contract.add_params(
+                    normalization_method="TMM",
+                    voom_applied=use_voom,
+                    prior_count=2,
+                )
+
+                logger.info(f"TMM normalization complete.")
+                return normalized_df, fitted_params
+
+            except Exception as e:
+                logger.warning(f"edgeR TMM failed: {e}")
+
+        # Fallback: use pydeseq2 median-of-ratios (better than naive log-CPM)
+        try:
+            from pydeseq2.dds import DeseqDataSet
+
+            logger.info("Falling back to pydeseq2 median-of-ratios normalization...")
+
+            # pydeseq2 expects samples x genes
+            counts_t = count_matrix.T
+            metadata = pd.DataFrame({"condition": ["A"] * counts_t.shape[0]}, index=counts_t.index)
+            dds = DeseqDataSet(counts=counts_t, metadata=metadata, design="~1")
+            dds.fit_size_factors()
+
+            size_factors = dds.obsm["size_factors"]
+            normalized = count_matrix.div(size_factors, axis=1)
+            log_normalized = np.log2(normalized + 1)
+
+            fitted_params = {"method": "pydeseq2_median_ratios", "size_factors": size_factors.tolist()}
             self.fitted_params["tmm_norm"] = fitted_params
-            self.contract.add_params(
-                normalization_method="TMM",
-                voom_applied=use_voom,
-                prior_count=2,
-            )
+            return log_normalized, fitted_params
+        except ImportError:
+            pass
 
-            logger.info(f"TMM normalization complete.")
-            return normalized_df, fitted_params
-
-        except Exception as e:
-            logger.error(f"TMM normalization failed: {str(e)}")
-            # Fallback to simple log-CPM
-            logger.info("Falling back to log-CPM normalization...")
-            cpm = (count_matrix + 1).apply(lambda x: np.log2(x / x.sum() * 1e6 + 1))
-            fitted_params = {"method": "log_cpm", "fallback": True}
-            return cpm, fitted_params
+        # Final fallback: proper log-CPM with library size normalization
+        logger.info("Falling back to log-CPM normalization...")
+        lib_sizes = count_matrix.sum(axis=0)
+        cpm = count_matrix.div(lib_sizes, axis=1) * 1e6
+        log_cpm = np.log2(cpm + 1)
+        fitted_params = {"method": "log_cpm", "fallback": True}
+        self.fitted_params["tmm_norm"] = fitted_params
+        return log_cpm, fitted_params
 
     def low_expression_filter(
         self, expression_df: pd.DataFrame, percentile: float = 25, min_threshold: float = 0.0

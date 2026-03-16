@@ -38,7 +38,7 @@ class CoxPartialLikelihood(nn.Module):
         event_indicators: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Compute negative log partial likelihood.
+        Compute negative log partial likelihood (Breslow, numerically stable).
 
         Args:
             log_hazard: [batch_size] log hazard ratios
@@ -48,27 +48,28 @@ class CoxPartialLikelihood(nn.Module):
         Returns:
             Scalar loss (negative log partial likelihood)
         """
-        # Sort by time (descending for risk set computation)
+        # Sort by time DESCENDING for cumsum-based risk set
         sorted_idx = torch.argsort(event_times, descending=True)
         log_hazard = log_hazard[sorted_idx]
         event_indicators = event_indicators[sorted_idx]
 
-        # Compute cumulative sum of exp(log_hazard) from right to left
-        # This gives us the risk set denominator
-        risk_set = torch.cumsum(torch.exp(log_hazard), dim=0)
+        # Log-sum-exp trick for numerical stability
+        max_log_h = log_hazard.max()
+        risk_set_log = torch.log(
+            torch.cumsum(torch.exp(log_hazard - max_log_h), dim=0)
+        ) + max_log_h
 
-        # Prevent log(0)
-        risk_set = torch.clamp(risk_set, min=self.eps)
-
-        # Log partial likelihood: sum over events
-        # For each event at time t: log(h_i) - log(sum of h in risk set)
-        log_likelihood = log_hazard - torch.log(risk_set)
+        # Log partial likelihood
+        log_likelihood = log_hazard - risk_set_log
 
         # Weight by event indicator (only count actual events)
         weighted_ll = log_likelihood * event_indicators
 
-        # Return negative mean loss over batch
-        return -weighted_ll.sum() / (event_indicators.sum() + self.eps)
+        n_events = event_indicators.sum()
+        if n_events == 0:
+            return torch.tensor(0.0, requires_grad=True, device=log_hazard.device)
+
+        return -weighted_ll.sum() / n_events
 
 
 class RankingLoss(nn.Module):

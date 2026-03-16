@@ -51,20 +51,16 @@ FUSION_MODELS = ["DeepSurv", "DeepHit"]
 
 rule all:
     input:
-        # Preprocessed data
         expand(os.path.join(DATA_PROCESSED, "{study}_preprocessed.h5ad"),
                study=TRAINING_STUDIES),
-        # Pathway scores
         expand(os.path.join(DATA_PROCESSED, "{study}_{method}_scores.h5ad"),
                study=TRAINING_STUDIES,
                method=PATHWAY_METHODS),
-        # Trained models
-        expand(os.path.join(MODELS_DIR, "{study}_{model}_trained.pkl"),
-               study=TRAINING_STUDIES,
-               model=BASELINE_MODELS + MODERN_MODELS + FUSION_MODELS),
-        # Evaluation results
+        expand(os.path.join(MODELS_DIR, "{model}_trained.pkl"),
+               model=BASELINE_MODELS + MODERN_MODELS),
+        expand(os.path.join(MODELS_DIR, "{model}_trained.pt"),
+               model=FUSION_MODELS),
         os.path.join(RESULTS_DIR, "cross_study_evaluation.json"),
-        # Final report
         os.path.join(REPORTS_DIR, "pipeline_report.html")
 
 # ============================================================================
@@ -193,14 +189,14 @@ rule train_baseline_models:
         expand(os.path.join(DATA_PROCESSED, "{study}_GSVA_scores.h5ad"),
                study=TRAINING_STUDIES)
     output:
-        model = os.path.join(MODELS_DIR, "{study}_{model}_trained.pkl"),
-        metrics = os.path.join(RESULTS_DIR, "{study}_{model}_metrics.json")
+        model = os.path.join(MODELS_DIR, "{model}_trained.pkl"),
+        metrics = os.path.join(RESULTS_DIR, "{model}_metrics.json")
     params:
         model_type = "{model}",
         n_outer_folds = config["evaluation"]["cross_validation"]["n_outer_folds"],
         n_inner_folds = config["evaluation"]["cross_validation"]["n_inner_folds"]
     log:
-        os.path.join(RESULTS_DIR, "logs", "{study}_{model}_baseline_train.log")
+        os.path.join(RESULTS_DIR, "logs", "{model}_baseline_train.log")
     conda:
         "envs/modeling.yaml"
     resources:
@@ -216,14 +212,14 @@ rule train_modern_models:
         expand(os.path.join(DATA_PROCESSED, "{study}_GSVA_scores.h5ad"),
                study=TRAINING_STUDIES)
     output:
-        model = os.path.join(MODELS_DIR, "{study}_{model}_trained.pkl"),
-        metrics = os.path.join(RESULTS_DIR, "{study}_{model}_metrics.json")
+        model = os.path.join(MODELS_DIR, "{model}_trained.pkl"),
+        metrics = os.path.join(RESULTS_DIR, "{model}_metrics.json")
     params:
         model_type = "{model}",
         n_outer_folds = config["evaluation"]["cross_validation"]["n_outer_folds"],
         n_inner_folds = config["evaluation"]["cross_validation"]["n_inner_folds"]
     log:
-        os.path.join(RESULTS_DIR, "logs", "{study}_{model}_modern_train.log")
+        os.path.join(RESULTS_DIR, "logs", "{model}_modern_train.log")
     conda:
         "envs/modeling.yaml"
     resources:
@@ -240,14 +236,14 @@ rule train_fusion_models:
         expand(os.path.join(DATA_PROCESSED, "{study}_GSVA_scores.h5ad"),
                study=TRAINING_STUDIES)
     output:
-        model = os.path.join(MODELS_DIR, "{study}_{model}_trained.pt"),
-        metrics = os.path.join(RESULTS_DIR, "{study}_{model}_metrics.json")
+        model = os.path.join(MODELS_DIR, "{model}_trained.pt"),
+        metrics = os.path.join(RESULTS_DIR, "{model}_metrics.json")
     params:
         model_type = "{model}",
         n_outer_folds = config["evaluation"]["cross_validation"]["n_outer_folds"],
         n_inner_folds = config["evaluation"]["cross_validation"]["n_inner_folds"]
     log:
-        os.path.join(RESULTS_DIR, "logs", "{study}_{model}_fusion_train.log")
+        os.path.join(RESULTS_DIR, "logs", "{model}_fusion_train.log")
     conda:
         "envs/deep_learning.yaml"
     resources:
@@ -265,10 +261,10 @@ rule train_fusion_models:
 rule cross_study_evaluation:
     """Comprehensive cross-study evaluation and risk stratification"""
     input:
-        models = expand(os.path.join(MODELS_DIR, "{study}_{model}_trained.{{ext}}"),
-                       study=TRAINING_STUDIES,
-                       model=BASELINE_MODELS + MODERN_MODELS + FUSION_MODELS,
-                       ext=["pkl", "pkl", "pkl", "pkl", "pkl", "pkl", "pt", "pt"]),
+        baseline_models = expand(os.path.join(MODELS_DIR, "{model}_trained.pkl"),
+                                model=BASELINE_MODELS + MODERN_MODELS),
+        fusion_models = expand(os.path.join(MODELS_DIR, "{model}_trained.pt"),
+                              model=FUSION_MODELS),
         pathway_scores = expand(os.path.join(DATA_PROCESSED, "{study}_GSVA_scores.h5ad"),
                                study=TRAINING_STUDIES)
     output:
