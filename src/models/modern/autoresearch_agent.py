@@ -239,7 +239,14 @@ class AutoresearchAgent:
             test_metrics = test_results[0]
 
             # Extract C-index (primary metric)
-            c_index = test_metrics.get('test_c_index', 0.5)
+            c_index = test_metrics.get('test_c_index', None)
+            if c_index is None:
+                logger.warning(
+                    "test_c_index not found in test metrics (keys: %s). "
+                    "Defaulting to 0.5 (random). Check model test_step().",
+                    list(test_metrics.keys()),
+                )
+                c_index = 0.5
 
             # Log metrics
             mlflow.log_metric('test_c_index', c_index)

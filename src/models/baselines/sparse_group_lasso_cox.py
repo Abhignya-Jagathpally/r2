@@ -191,6 +191,7 @@ class SparseGroupLassoCoxModel(BaseSurvivalModel):
         """
         n_samples = X.shape[0]
         eta = X @ beta  # Linear predictor
+        eta = np.clip(eta, -500, 500)  # Prevent exp overflow
         exp_eta = np.exp(eta)
 
         ll = 0.0
@@ -233,6 +234,8 @@ class SparseGroupLassoCoxModel(BaseSurvivalModel):
         """
         n_samples, n_features = X.shape
         eta = X @ beta
+        # Clip eta to prevent overflow in exp()
+        eta = np.clip(eta, -500, 500)
         exp_eta = np.exp(eta)
         grad = np.zeros(n_features)
 

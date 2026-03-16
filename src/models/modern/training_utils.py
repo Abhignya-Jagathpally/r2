@@ -67,7 +67,8 @@ class CoxPartialLikelihood(nn.Module):
 
         n_events = event_indicators.sum()
         if n_events == 0:
-            return torch.tensor(0.0, requires_grad=True, device=log_hazard.device)
+            # Return a graph-connected zero so gradients flow through
+            return (log_hazard * 0.0).sum()
 
         return -weighted_ll.sum() / n_events
 

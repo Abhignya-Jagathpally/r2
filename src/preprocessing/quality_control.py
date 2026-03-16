@@ -412,10 +412,10 @@ class QualityController:
     </div>
 
     <h3>PCA Plot</h3>
-    <img src="{pca_plot.name}" alt="PCA Plot">
+    <img src="./{pca_plot.name}" alt="PCA Plot" style="max-width:100%">
 
     <h2>Feature Distributions</h2>
-    <img src="{feat_plot.name}" alt="Feature Distributions">
+    <img src="./{feat_plot.name}" alt="Feature Distributions" style="max-width:100%">
 
     <h2>Conclusion</h2>
     <p>

@@ -127,9 +127,11 @@ class TabPFNRiskClassifier(BaseEstimator, ClassifierMixin):
             X_fit = X[mask]
             y_survival_fit = y_survival[mask]
 
-            # Create binary labels: 1 if event and survival < threshold, 0 otherwise
+            # Create binary labels: 1 if event occurred before threshold, 0 otherwise
             y_binary = np.zeros(len(y_survival_fit), dtype=int)
-            y_binary[event_indicators[mask] == 1] = (y_survival_fit[event_indicators[mask] == 1] < threshold).astype(int)
+            event_in_subset = event_indicators[mask]
+            event_mask_in_subset = (event_in_subset == 1)
+            y_binary[event_mask_in_subset] = (y_survival_fit[event_mask_in_subset] < threshold).astype(int)
 
             # No sample weights needed
             self.sample_weights_ = None
@@ -139,19 +141,28 @@ class TabPFNRiskClassifier(BaseEstimator, ClassifierMixin):
             X_fit = X
             y_survival_fit = y_survival
 
-            # Estimate censoring distribution using Kaplan-Meier
-            # For simplicity, use empirical censoring probabilities
+            # Estimate censoring distribution using Kaplan-Meier for censoring times
+            # Reverse event indicators: model the censoring process
             n_total = len(y_survival)
-            n_censored_before_threshold = np.sum((event_indicators == 0) & (y_survival < threshold))
+            sample_weights = np.ones(n_total, dtype=float)
 
-            # Probability of being censored at time threshold
-            censoring_prob = max(0.05, n_censored_before_threshold / max(1, n_total))  # Avoid division by zero
-
-            # Compute sample weights: down-weight censored observations
-            sample_weights = np.ones(n_total)
-            censored_mask = (event_indicators == 0)
-            if np.any(censored_mask):
-                sample_weights[censored_mask] = 1.0 / (1.0 - censoring_prob + 1e-6)
+            try:
+                from lifelines import KaplanMeierFitter
+                km_censor = KaplanMeierFitter()
+                # Fit KM on censoring times (event=0 becomes the "event" for censoring KM)
+                km_censor.fit(y_survival, event_observed=(1 - event_indicators))
+                # G(t) = P(not censored by time t)
+                for i in range(n_total):
+                    g_t = km_censor.predict(y_survival[i])
+                    g_val = max(g_t.values[0], 0.05)  # Floor to avoid extreme weights
+                    sample_weights[i] = 1.0 / g_val
+            except ImportError:
+                # Fallback: empirical censoring probability
+                n_censored = np.sum((event_indicators == 0) & (y_survival < threshold))
+                censoring_prob = max(0.05, n_censored / max(1, n_total))
+                censored_mask = (event_indicators == 0)
+                if np.any(censored_mask):
+                    sample_weights[censored_mask] = 1.0 / (1.0 - censoring_prob + 1e-6)
 
             self.sample_weights_ = sample_weights / sample_weights.sum() * len(sample_weights)
 

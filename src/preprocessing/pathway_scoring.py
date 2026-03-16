@@ -288,8 +288,10 @@ class PathwayScorer:
             base = importr("base")
 
             # Build R matrix with dimnames
+            # R matrix() fills column-major, so flatten in Fortran order
+            # to preserve genes-as-rows, samples-as-columns layout
             r_matrix = ro.r["matrix"](
-                ro.FloatVector(expression_df.values.T.flatten()),
+                ro.FloatVector(expression_df.values.flatten(order='F')),
                 nrow=expression_df.shape[0],
                 ncol=expression_df.shape[1],
             )

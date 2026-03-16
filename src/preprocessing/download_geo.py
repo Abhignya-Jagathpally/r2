@@ -75,8 +75,12 @@ def retry_with_backoff(
 
             for attempt in range(max_retries + 1):
                 try:
-                    # Build kwargs for this attempt
+                    # Build kwargs for this attempt, inject timeout if accepted
                     call_kwargs = kwargs.copy()
+                    import inspect
+                    sig = inspect.signature(func)
+                    if 'timeout' in sig.parameters and 'timeout' not in call_kwargs:
+                        call_kwargs['timeout'] = timeout
 
                     return func(*args, **call_kwargs)
 

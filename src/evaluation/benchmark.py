@@ -439,12 +439,17 @@ class ModelComparisonReport:
                     # Mean difference
                     mean_diff = model1_scores.mean() - model2_scores.mean()
 
-                    # T-test
+                    # Paired or independent t-test depending on score alignment
                     try:
-                        t_stat, p_val = np.random.randn(2)  # Placeholder
-                        # Proper t-test would use: from scipy.stats import ttest_ind
-                        # t_stat, p_val = ttest_ind(model1_scores, model2_scores)
+                        from scipy.stats import ttest_ind, ttest_rel
+                        if len(model1_scores) == len(model2_scores):
+                            # Paired test (same folds/cohorts)
+                            t_stat, p_val = ttest_rel(model1_scores, model2_scores)
+                        else:
+                            # Independent samples
+                            t_stat, p_val = ttest_ind(model1_scores, model2_scores, equal_var=False)
                     except Exception:
+                        t_stat = np.nan
                         p_val = np.nan
 
                     comparisons.append({

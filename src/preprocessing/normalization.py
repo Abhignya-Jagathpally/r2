@@ -172,15 +172,20 @@ class ExpressionNormalizer:
 
         from sklearn.preprocessing import QuantileTransformer
 
+        n_samples = expression_df.shape[1]
         qt = QuantileTransformer(
-            n_quantiles=min(expression_df.shape[0], 1000),
+            n_quantiles=min(n_samples, 1000),
             output_distribution='normal',
             random_state=42,
         )
 
-        # QuantileTransformer works on samples x features, expression_df is genes x samples
-        # Transpose, fit_transform, transpose back
-        normalized_values = qt.fit_transform(expression_df.T.values).T
+        # expression_df is genes(rows) x samples(cols).
+        # QuantileTransformer expects samples(rows) x features(cols).
+        # Transpose so each column = one gene, each row = one sample.
+        # This normalizes each gene's distribution ACROSS samples (cross-sample quantile normalization).
+        samples_by_genes = expression_df.T.values          # (n_samples, n_genes)
+        normalized_sbg = qt.fit_transform(samples_by_genes) # (n_samples, n_genes)
+        normalized_values = normalized_sbg.T                # (n_genes, n_samples)
 
         normalized_df = pd.DataFrame(
             normalized_values,
@@ -252,8 +257,9 @@ class ExpressionNormalizer:
 
                 if use_voom:
                     logger.info("Applying voom transformation...")
-                    design_matrix = np.ones((count_matrix.shape[1], 1))
-                    v_obj = limma.voom(dge, design=ro.r("matrix(1, nrow=ncol(counts), ncol=1)"))
+                    n_samples = count_matrix.shape[1]
+                    design_r = ro.r(f"matrix(1, nrow={n_samples}, ncol=1)")
+                    v_obj = limma.voom(dge, design=design_r)
                     voom_expr = np.array(v_obj.slots["E"])
                     normalized_df = pd.DataFrame(
                         voom_expr,
