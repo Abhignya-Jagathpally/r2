@@ -1,0 +1,58 @@
+{
+  "datasets": {
+    "GSE19784": {
+      "accession": "GSE19784",
+      "title": "NDMM_320samples",
+      "platform": "GPL570",
+      "platform_name": "Affymetrix U133Plus2",
+      "n_samples": 320,
+      "description": "Newly diagnosed multiple myeloma"
+    },
+    "GSE39754": {
+      "accession": "GSE39754",
+      "title": "Healthy_MM_exon",
+      "platform": "GPL17077",
+      "platform_name": "Agilent SurePrint G3 Human GE v2 8x60K",
+      "description": "Healthy controls and MM samples"
+    },
+    "GSE2658": {
+      "accession": "GSE2658",
+      "title": "Pretreatment_MM",
+      "platform": "GPL570",
+      "platform_name": "Affymetrix U133Plus2",
+      "description": "Pre-treatment multiple myeloma"
+    }
+  },
+  "preprocessing": {
+    "normalization": {
+      "array_method": "quantile",
+      "rnaseq_method": "TMM",
+      "use_voom": true,
+      "log_transform": true,
+      "pseudocount": 0.0,
+      "low_expr_filter_percentile": 25
+    },
+    "pathway_scoring": {
+      "method": "ssgsea",
+      "sources": ["hallmark", "kegg", "reactome", "mm"],
+      "min_genes_per_pathway": 3
+    },
+    "quality_control": {
+      "pca_n_components": 10,
+      "pca_outlier_threshold_sd": 3.0,
+      "generate_plots": true
+    }
+  },
+  "harmonization": {
+    "standardization_method": "zscore",
+    "min_common_pathways": 50,
+    "visualize_distributions": true
+  },
+  "output": {
+    "save_raw_data": true,
+    "save_normalized_data": true,
+    "save_pathway_scores": true,
+    "save_contracts": true,
+    "save_qc_reports": true
+  }
+}

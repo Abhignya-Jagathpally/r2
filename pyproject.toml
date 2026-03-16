@@ -1,0 +1,217 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mm-transcriptomics-risk-signature"
+version = "0.1.0"
+description = "Bulk transcriptomics cross-study MM risk-signature pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "PhD Researcher 1", email = "researcher@institution.edu"}
+]
+keywords = [
+    "transcriptomics",
+    "multiple-myeloma",
+    "risk-signature",
+    "machine-learning",
+    "pathway-analysis"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+dependencies = [
+    # Core data science
+    "numpy>=1.24.0",
+    "scipy>=1.10.0",
+    "pandas>=2.0.0",
+
+    # Single-cell / bulk transcriptomics
+    "scanpy>=1.9.0",
+    "anndata>=0.9.0",
+    "pydeseq2>=0.4.0",
+
+    # Pathway analysis
+    "gseapy>=1.0.0",
+
+    # Survival analysis
+    "lifelines>=0.29.0",
+    "scikit-survival>=0.22.0",
+    "sksurv>=0.22.0",
+
+    # Machine learning
+    "scikit-learn>=1.3.0",
+    "xgboost>=2.0.0",
+    "catboost>=1.2.0",
+    "torch>=2.0.0",
+    "pytorch-lightning>=2.0.0",
+
+    # Distributed computing & hyperparameter tuning
+    "ray[tune]>=2.8.0",
+    "dask[dataframe]>=2023.12.0",
+
+    # Experiment tracking
+    "mlflow>=2.10.0",
+    "wandb>=0.16.0",
+
+    # Data versioning
+    "dvc>=3.50.0",
+
+    # Data handling
+    "pyarrow>=14.0.0",
+
+    # Gene data handling
+    "GEOparse>=2.0.0",
+
+    # Visualization
+    "matplotlib>=3.7.0",
+    "seaborn>=0.13.0",
+    "plotly>=5.18.0",
+
+    # Configuration management
+    "omegaconf>=2.3.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "click>=8.1.0",
+    "tqdm>=4.66.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xdist>=3.5.0",
+    "black>=23.0.0",
+    "isort>=5.13.0",
+    "flake8>=6.1.0",
+    "mypy>=1.7.0",
+    "pylint>=3.0.0",
+    "pre-commit>=3.5.0",
+]
+docs = [
+    "sphinx>=7.2.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "sphinx-autodoc-typehints>=1.25.0",
+    "myst-parser>=2.0.0",
+]
+gpu = [
+    "torch>=2.0.0[cuda117]",
+]
+
+[project.urls]
+Homepage = "https://github.com/institution/mm-transcriptomics-risk-signature"
+Documentation = "https://mm-transcriptomics-risk-signature.readthedocs.io"
+Repository = "https://github.com/institution/mm-transcriptomics-risk-signature"
+"Bug Tracker" = "https://github.com/institution/mm-transcriptomics-risk-signature/issues"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.setuptools.package-data]
+src = ["**/*.yaml", "**/*.json"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # Directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | notebooks
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+known_first_party = ["src"]
+known_third_party = ["scanpy", "anndata", "numpy", "pandas", "sklearn"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_any_generics = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "scanpy.*",
+    "anndata.*",
+    "gseapy.*",
+    "GEOparse.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --strict-markers --tb=short --cov=src --cov-report=term-missing"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "gpu: marks tests requiring GPU",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.pylint.messages_control]
+disable = [
+    "C0103",  # Invalid name
+    "R0913",  # Too many arguments
+    "R0914",  # Too many local variables
+    "W0212",  # Protected access
+    "C0302",  # Too many lines in module
+]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "df", "X", "y"]

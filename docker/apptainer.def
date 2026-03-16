@@ -1,0 +1,119 @@
+BootStrap: docker
+From: continuumio/miniconda3:latest
+
+%labels
+    Author PhD Researcher 1
+    Version v0.1.0
+    Description Bulk transcriptomics cross-study MM risk-signature pipeline
+
+%environment
+    export DEBIAN_FRONTEND=noninteractive
+    export CONDA_AUTO_UPDATE_CONDA=false
+    export PYTHONUNBUFFERED=1
+    export PYTHONDONTWRITEBYTECODE=1
+    export PATH=/opt/conda/bin:$PATH
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+
+%post
+    # Update package manager
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        git \
+        wget \
+        curl \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        libxml2-dev \
+        zlib1g-dev \
+        libbz2-dev \
+        liblzma-dev \
+        gfortran \
+        libopenblas-dev \
+        liblapack-dev \
+        locales \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Set locale
+    echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
+
+    # Configure conda
+    conda config --system --prepend channels conda-forge && \
+    conda config --system --set auto_update_conda false
+
+    # Create conda environment
+    conda create -y -q -n mmpipeline \
+        python=3.11 \
+        numpy \
+        scipy \
+        pandas \
+        scikit-learn \
+        matplotlib \
+        seaborn \
+        r-base \
+        r-essentials
+
+    # Activate environment in post
+    . /opt/conda/etc/profile.d/conda.sh && conda activate mmpipeline
+
+    # Install R packages
+    R --slave -e "install.packages(c('devtools', 'tidyverse', 'igraph'), repos='http://cran.r-project.org', quiet=TRUE)"
+    R --slave -e "if (!require('BiocManager', quietly=TRUE)) install.packages('BiocManager', repos='http://cran.r-project.org'); BiocManager::install(c('GSVA', 'singscore', 'Biobase'), update=FALSE, ask=FALSE, quiet=TRUE)"
+
+    # Clean conda cache
+    conda clean --all -f -y
+
+%files
+    pyproject.toml /app/
+    setup.py /app/ 2>/dev/null || echo "setup.py not found"
+    README.md /app/ 2>/dev/null || echo "README.md not found"
+    src /app/
+    config /app/
+    workflows /app/
+
+%appenv mmpipeline
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate mmpipeline
+
+%apprun mmpipeline
+    python "$@"
+
+%runscript
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate mmpipeline
+    exec python "$@"
+
+%startscript
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate mmpipeline
+    exec /bin/bash
+
+%help
+    Bulk transcriptomics cross-study MM (multiple myeloma) risk-signature pipeline.
+
+    This container provides a complete computational environment for:
+    - Transcriptomics data preprocessing (array and RNA-seq)
+    - Pathway analysis (GSVA, ssGSEA)
+    - Machine learning model training (baselines, modern, fusion)
+    - Cross-study evaluation
+    - Risk signature development and validation
+
+    Usage:
+        apptainer run mmpipeline.sif python script.py
+        apptainer exec mmpipeline.sif bash
+        apptainer shell mmpipeline.sif
+
+%test
+    . /opt/conda/etc/profile.d/conda.sh
+    conda activate mmpipeline
+
+    # Test Python packages
+    python -c "import numpy, scipy, pandas, sklearn, matplotlib, seaborn; print('Python packages OK')"
+
+    # Test R packages
+    R --slave -e "library(Biobase); library(GSVA); library(singscore); print('R packages OK')"
+
+    # Test conda environment
+    which python
+    python --version

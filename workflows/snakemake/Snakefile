@@ -1,0 +1,342 @@
+"""
+MM Transcriptomics Risk Signature Pipeline - Snakemake Implementation
+Author: PhD Researcher 1
+Description: Bulk transcriptomics cross-study analysis for MM risk stratification
+"""
+
+import os
+import yaml
+from pathlib import Path
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+# Load main pipeline configuration
+configfile: "../../config/pipeline_config.yaml"
+
+# Define paths
+DATA_RAW = "data/raw"
+DATA_PROCESSED = "data/processed"
+OUTPUT_DIR = "outputs"
+MODELS_DIR = os.path.join(OUTPUT_DIR, "models")
+RESULTS_DIR = os.path.join(OUTPUT_DIR, "results")
+REPORTS_DIR = os.path.join(OUTPUT_DIR, "reports")
+
+# Create output directories
+os.makedirs(DATA_PROCESSED, exist_ok=True)
+os.makedirs(MODELS_DIR, exist_ok=True)
+os.makedirs(RESULTS_DIR, exist_ok=True)
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+# Define datasets
+TRAINING_STUDIES = ["GSE2658", "GSE19784", "GSE39754", "CoMMpass"]
+STUDY_TYPES = {
+    "GSE2658": "microarray",
+    "GSE19784": "microarray",
+    "GSE39754": "microarray",
+    "CoMMpass": "rnaseq"
+}
+
+PATHWAY_METHODS = ["GSVA", "ssGSEA"]
+PATHWAY_DATABASES = ["Hallmark", "KEGG", "Reactome", "curated_MM"]
+
+BASELINE_MODELS = ["CoxPH", "KaplanMeier", "RandomSurvival"]
+MODERN_MODELS = ["XGBoost", "CatBoost", "RandomForest"]
+FUSION_MODELS = ["DeepSurv", "DeepHit"]
+
+# ============================================================================
+# RULE TARGETS (Final outputs)
+# ============================================================================
+
+rule all:
+    input:
+        # Preprocessed data
+        expand(os.path.join(DATA_PROCESSED, "{study}_preprocessed.h5ad"),
+               study=TRAINING_STUDIES),
+        # Pathway scores
+        expand(os.path.join(DATA_PROCESSED, "{study}_{method}_scores.h5ad"),
+               study=TRAINING_STUDIES,
+               method=PATHWAY_METHODS),
+        # Trained models
+        expand(os.path.join(MODELS_DIR, "{study}_{model}_trained.pkl"),
+               study=TRAINING_STUDIES,
+               model=BASELINE_MODELS + MODERN_MODELS + FUSION_MODELS),
+        # Evaluation results
+        os.path.join(RESULTS_DIR, "cross_study_evaluation.json"),
+        # Final report
+        os.path.join(REPORTS_DIR, "pipeline_report.html")
+
+# ============================================================================
+# DATA DOWNLOAD RULES
+# ============================================================================
+
+rule download_geo_data:
+    """Download microarray data from GEO"""
+    params:
+        accession = lambda wildcards: config["datasets"]["training_studies"][
+            [d["identifier"] for d in config["datasets"]["training_studies"]].index(wildcards.study)
+        ]["accession"],
+        study_name = lambda wildcards: wildcards.study
+    output:
+        raw_data = os.path.join(DATA_RAW, "{study}_raw.tsv.gz")
+    log:
+        os.path.join(RESULTS_DIR, "logs", "{study}_download.log")
+    shell:
+        """
+        python -c "
+import GEOparse
+import gzip
+import pandas as pd
+
+print('Downloading {params.accession}...', flush=True)
+geo = GEOparse.get_GEO('{params.accession}')
+gset = geo.phenotype_data
+
+# Save to compressed TSV
+gset.to_csv('{output.raw_data}', sep='\t', compression='gzip')
+print('Download complete: {output.raw_data}', flush=True)
+" 2>&1 | tee {log}
+        """
+
+rule prepare_rnaseq_data:
+    """Prepare RNA-seq data (placeholder - requires manual CoMMpass download)"""
+    output:
+        raw_data = os.path.join(DATA_RAW, "CoMMpass_raw.tsv.gz")
+    log:
+        os.path.join(RESULTS_DIR, "logs", "CoMMpass_prepare.log")
+    shell:
+        """
+        echo "CoMMpass data requires manual download from research.themmrf.org" > {log}
+        echo "Please place uncompressed counts matrix at {output.raw_data}" >> {log}
+        touch {output.raw_data}
+        """
+
+# ============================================================================
+# PREPROCESSING RULES
+# ============================================================================
+
+rule preprocess_microarray:
+    """Preprocess microarray data (quantile normalization, batch correction)"""
+    input:
+        raw_data = os.path.join(DATA_RAW, "{study}_raw.tsv.gz")
+    output:
+        processed = os.path.join(DATA_PROCESSED, "{study}_preprocessed.h5ad")
+    params:
+        normalize_method = config["preprocessing"]["array"]["normalization_method"],
+        batch_correction = config["preprocessing"]["array"]["batch_correction"],
+        low_expr_threshold = config["preprocessing"]["low_expression_filter"]["threshold"]
+    log:
+        os.path.join(RESULTS_DIR, "logs", "{study}_preprocess.log")
+    conda:
+        "envs/preprocessing.yaml"
+    resources:
+        cpus = 4,
+        mem_mb = 16000,
+        time_min = 120
+    script:
+        "scripts/preprocess_arrays.py"
+
+rule preprocess_rnaseq:
+    """Preprocess RNA-seq data (TMM normalization, variance stabilization)"""
+    input:
+        raw_data = os.path.join(DATA_RAW, "{study}_raw.tsv.gz")
+    output:
+        processed = os.path.join(DATA_PROCESSED, "{study}_preprocessed.h5ad")
+    params:
+        normalize_method = config["preprocessing"]["rnaseq"]["normalization_method"],
+        log_transform = config["preprocessing"]["rnaseq"]["log_transform"],
+        low_expr_threshold = config["preprocessing"]["low_expression_filter"]["threshold"]
+    log:
+        os.path.join(RESULTS_DIR, "logs", "{study}_preprocess.log")
+    conda:
+        "envs/preprocessing.yaml"
+    resources:
+        cpus = 4,
+        mem_mb = 16000,
+        time_min = 120
+    script:
+        "scripts/preprocess_rnaseq.py"
+
+# ============================================================================
+# PATHWAY ANALYSIS RULES
+# ============================================================================
+
+rule compute_pathway_scores:
+    """Compute pathway scores using GSVA or ssGSEA"""
+    input:
+        preprocessed = os.path.join(DATA_PROCESSED, "{study}_preprocessed.h5ad")
+    output:
+        pathway_scores = os.path.join(DATA_PROCESSED, "{study}_{method}_scores.h5ad")
+    params:
+        method = "{method}",
+        databases = PATHWAY_DATABASES,
+        n_features = config["pathway"]["filtering"]["n_features"]
+    log:
+        os.path.join(RESULTS_DIR, "logs", "{study}_{method}_pathway.log")
+    conda:
+        "envs/pathway_analysis.yaml"
+    resources:
+        cpus = 8,
+        mem_mb = 32000,
+        time_min = 240
+    script:
+        "scripts/compute_pathway_scores.py"
+
+# ============================================================================
+# MODELING RULES
+# ============================================================================
+
+rule train_baseline_models:
+    """Train baseline survival models (CoxPH, Kaplan-Meier, Random Survival)"""
+    input:
+        expand(os.path.join(DATA_PROCESSED, "{study}_GSVA_scores.h5ad"),
+               study=TRAINING_STUDIES)
+    output:
+        model = os.path.join(MODELS_DIR, "{study}_{model}_trained.pkl"),
+        metrics = os.path.join(RESULTS_DIR, "{study}_{model}_metrics.json")
+    params:
+        model_type = "{model}",
+        n_outer_folds = config["evaluation"]["cross_validation"]["n_outer_folds"],
+        n_inner_folds = config["evaluation"]["cross_validation"]["n_inner_folds"]
+    log:
+        os.path.join(RESULTS_DIR, "logs", "{study}_{model}_baseline_train.log")
+    conda:
+        "envs/modeling.yaml"
+    resources:
+        cpus = 4,
+        mem_mb = 16000,
+        time_min = 180
+    script:
+        "scripts/train_baseline_models.py"
+
+rule train_modern_models:
+    """Train modern gradient boosting models (XGBoost, CatBoost, RF)"""
+    input:
+        expand(os.path.join(DATA_PROCESSED, "{study}_GSVA_scores.h5ad"),
+               study=TRAINING_STUDIES)
+    output:
+        model = os.path.join(MODELS_DIR, "{study}_{model}_trained.pkl"),
+        metrics = os.path.join(RESULTS_DIR, "{study}_{model}_metrics.json")
+    params:
+        model_type = "{model}",
+        n_outer_folds = config["evaluation"]["cross_validation"]["n_outer_folds"],
+        n_inner_folds = config["evaluation"]["cross_validation"]["n_inner_folds"]
+    log:
+        os.path.join(RESULTS_DIR, "logs", "{study}_{model}_modern_train.log")
+    conda:
+        "envs/modeling.yaml"
+    resources:
+        cpus = 8,
+        mem_mb = 32000,
+        time_min = 300,
+        gpu = 1
+    script:
+        "scripts/train_modern_models.py"
+
+rule train_fusion_models:
+    """Train fusion/deep learning models (DeepSurv, DeepHit)"""
+    input:
+        expand(os.path.join(DATA_PROCESSED, "{study}_GSVA_scores.h5ad"),
+               study=TRAINING_STUDIES)
+    output:
+        model = os.path.join(MODELS_DIR, "{study}_{model}_trained.pt"),
+        metrics = os.path.join(RESULTS_DIR, "{study}_{model}_metrics.json")
+    params:
+        model_type = "{model}",
+        n_outer_folds = config["evaluation"]["cross_validation"]["n_outer_folds"],
+        n_inner_folds = config["evaluation"]["cross_validation"]["n_inner_folds"]
+    log:
+        os.path.join(RESULTS_DIR, "logs", "{study}_{model}_fusion_train.log")
+    conda:
+        "envs/deep_learning.yaml"
+    resources:
+        cpus = 8,
+        mem_mb = 32000,
+        time_min = 480,
+        gpu = 1
+    script:
+        "scripts/train_fusion_models.py"
+
+# ============================================================================
+# EVALUATION RULES
+# ============================================================================
+
+rule cross_study_evaluation:
+    """Comprehensive cross-study evaluation and risk stratification"""
+    input:
+        models = expand(os.path.join(MODELS_DIR, "{study}_{model}_trained.{{ext}}"),
+                       study=TRAINING_STUDIES,
+                       model=BASELINE_MODELS + MODERN_MODELS + FUSION_MODELS,
+                       ext=["pkl", "pkl", "pkl", "pkl", "pkl", "pkl", "pt", "pt"]),
+        pathway_scores = expand(os.path.join(DATA_PROCESSED, "{study}_GSVA_scores.h5ad"),
+                               study=TRAINING_STUDIES)
+    output:
+        results = os.path.join(RESULTS_DIR, "cross_study_evaluation.json"),
+        predictions = os.path.join(RESULTS_DIR, "predictions.h5ad"),
+        risk_scores = os.path.join(RESULTS_DIR, "risk_scores.csv")
+    params:
+        metric = config["experiment"]["tracking"]["experiment_name"]
+    log:
+        os.path.join(RESULTS_DIR, "logs", "evaluation.log")
+    conda:
+        "envs/evaluation.yaml"
+    resources:
+        cpus = 8,
+        mem_mb = 32000,
+        time_min = 300
+    script:
+        "scripts/evaluate_cross_study.py"
+
+# ============================================================================
+# REPORTING RULES
+# ============================================================================
+
+rule generate_report:
+    """Generate comprehensive HTML report"""
+    input:
+        results = os.path.join(RESULTS_DIR, "cross_study_evaluation.json"),
+        risk_scores = os.path.join(RESULTS_DIR, "risk_scores.csv")
+    output:
+        report = os.path.join(REPORTS_DIR, "pipeline_report.html")
+    log:
+        os.path.join(RESULTS_DIR, "logs", "report_generation.log")
+    conda:
+        "envs/reporting.yaml"
+    resources:
+        cpus = 2,
+        mem_mb = 4000,
+        time_min = 60
+    script:
+        "scripts/generate_report.py"
+
+# ============================================================================
+# UTILITY RULES
+# ============================================================================
+
+rule setup_mlflow:
+    """Initialize MLflow experiment and tracking"""
+    output:
+        mlflow_init = touch(".mlflow_initialized")
+    log:
+        "logs/mlflow_setup.log"
+    conda:
+        "envs/experiment_tracking.yaml"
+    shell:
+        """
+        python config/mlflow_setup.py 2>&1 | tee {log}
+        """
+
+rule clean:
+    """Remove all generated files"""
+    shell:
+        """
+        rm -rf {DATA_PROCESSED} {MODELS_DIR} {RESULTS_DIR} {REPORTS_DIR} work .snakemake
+        """
+
+rule clean_all:
+    """Remove all files including raw data"""
+    shell:
+        """
+        rm -rf {DATA_RAW} {DATA_PROCESSED} {MODELS_DIR} {RESULTS_DIR} {REPORTS_DIR} work .snakemake
+        """

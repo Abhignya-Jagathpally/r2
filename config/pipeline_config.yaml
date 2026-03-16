@@ -1,0 +1,430 @@
+# Master configuration for bulk transcriptomics MM risk-signature pipeline
+# ============================================================================
+
+pipeline:
+  name: "MM Transcriptomics Risk Signature Pipeline"
+  version: "0.1.0"
+  description: "Cross-study bulk transcriptomics analysis for MM risk stratification"
+  author: "PhD Researcher 1"
+
+# ============================================================================
+# DATA CONFIGURATION
+# ============================================================================
+datasets:
+  training_studies:
+    - name: "CoMMpass"
+      identifier: "MMRF_CoMMpass_IA21"
+      type: "rnaseq"
+      platform: "RNA-seq"
+      samples: 1000
+      source: "https://research.themmrf.org/"
+      accession: null
+      processing_notes: "Download from CoMMpass portal with credentials"
+
+    - name: "GSE2658"
+      identifier: "GSE2658"
+      type: "microarray"
+      platform: "Affymetrix U133 Plus 2.0"
+      samples: 559
+      source: "GEO"
+      accession: "GSE2658"
+      processing_notes: "Barlogie et al. (2006)"
+
+    - name: "GSE19784"
+      identifier: "GSE19784"
+      type: "microarray"
+      platform: "Affymetrix HG-U133 Plus 2.0"
+      samples: 589
+      source: "GEO"
+      accession: "GSE19784"
+      processing_notes: "Kuiper et al. (2012)"
+
+    - name: "GSE39754"
+      identifier: "GSE39754"
+      type: "microarray"
+      platform: "Affymetrix HG-U133 Plus 2.0"
+      samples: 559
+      source: "GEO"
+      accession: "GSE39754"
+      processing_notes: "Shaughnessy et al. (2014)"
+
+  test_cohorts:
+    - name: "APEX"
+      identifier: "APEX_validation"
+      type: "microarray"
+      samples: 400
+      processing_notes: "External validation cohort"
+
+data_directories:
+  raw: "data/raw"
+  processed: "data/processed"
+  cache: "data/cache"
+  external: "data/external"
+
+# ============================================================================
+# PREPROCESSING CONFIGURATION
+# ============================================================================
+preprocessing:
+  # Probe mapping and normalization
+  probe_mapping:
+    method: "HGNC"  # HGNC gene symbol mapping
+    collapse_probes: true
+    collapse_method: "max_variance"  # max, mean, max_variance
+    handle_missing: "drop"  # drop, fill_zero, fill_median
+
+  # Array data processing
+  array:
+    normalize: true
+    normalization_method: "quantile"  # quantile, loess, rma, gcrma
+    batch_correction: true
+    batch_correction_method: "ComBat"  # ComBat, ComBat_SEQ, Harmony
+    platform_standardization: true
+
+  # RNA-seq data processing
+  rnaseq:
+    normalize: true
+    normalization_method: "TMM"  # TMM, DESeq2, quantile, CPM
+    log_transform: true
+    log_base: 2
+    min_counts: 1
+    variance_stabilize: true
+
+  # General filtering
+  low_expression_filter:
+    enabled: true
+    method: "mean_cpm"  # mean_cpm, median_cpm, percent_zero
+    threshold: 1.0
+    min_samples: 10
+
+  # Quality control
+  quality_control:
+    remove_mitochondrial: true
+    remove_sex_linked: false
+    remove_outliers: true
+    outlier_method: "mad"  # mad, zscore
+    outlier_threshold: 3.0
+
+  # Final processing
+  scaling:
+    method: "zscore"  # zscore, robust, minmax
+    by_batch: false
+
+# ============================================================================
+# PATHWAY ANALYSIS CONFIGURATION
+# ============================================================================
+pathway:
+  # Pathway databases
+  databases:
+    Hallmark:
+      source: "MSigDB"
+      url: "https://www.gsea-msigdb.org/gsea/msigdb/download_file.jsp?filePath=/msigdb/human/h.all.v2024.1.Hs.symbols.gmt"
+      min_size: 5
+      max_size: 500
+
+    KEGG:
+      source: "MSigDB"
+      url: "https://www.gsea-msigdb.org/gsea/msigdb/download_file.jsp?filePath=/msigdb/human/c2.cp.kegg_legacy.v2024.1.Hs.symbols.gmt"
+      min_size: 10
+      max_size: 500
+
+    Reactome:
+      source: "MSigDB"
+      url: "https://www.gsea-msigdb.org/gsea/msigdb/download_file.jsp?filePath=/msigdb/human/c2.cp.reactome.v2024.1.Hs.symbols.gmt"
+      min_size: 5
+      max_size: 500
+
+    curated_MM:
+      source: "literature"
+      file: "config/mm_gene_sets.gmt"
+      description: "Manually curated MM-relevant pathways"
+      min_size: 5
+      max_size: 500
+
+  # Pathway scoring methods
+  methods:
+    GSVA:
+      enabled: true
+      use_counts: false
+      kernel: "Gaussian"
+      tau: 0.25
+      parallel_sz: 4
+
+    ssGSEA:
+      enabled: true
+      scale: true
+      norm: true
+      single_sample: true
+
+  # Filtering and selection
+  filtering:
+    method: "variance"
+    n_features: 500
+    min_variance: 0.1
+
+# ============================================================================
+# MODELING CONFIGURATION
+# ============================================================================
+modeling:
+  target: "event_free_survival"  # event_free_survival, overall_survival
+  event_column: "event"
+  time_column: "time_months"
+
+  # Baseline models
+  baselines:
+    - name: "CoxPH"
+      type: "linear_survival"
+      hyperparams:
+        penalizer: 0.001
+        l1_ratio: 0.5  # for ElasticNet
+        max_iter: 1000
+
+    - name: "KaplanMeier"
+      type: "nonparametric"
+      hyperparams:
+        n_groups: 2
+
+    - name: "RandomSurvival"
+      type: "tree_survival"
+      hyperparams:
+        n_estimators: 100
+        max_depth: 5
+
+  # Modern models
+  modern:
+    - name: "XGBoost"
+      type: "gradient_boosting"
+      hyperparams:
+        n_estimators: 200
+        learning_rate: 0.05
+        max_depth: 6
+        subsample: 0.8
+        colsample_bytree: 0.8
+        objective: "survival:cox"
+
+    - name: "CatBoost"
+      type: "gradient_boosting"
+      hyperparams:
+        iterations: 200
+        learning_rate: 0.05
+        depth: 6
+        loss_function: "Cox"
+        verbose: false
+
+    - name: "RandomForest"
+      type: "tree_ensemble"
+      hyperparams:
+        n_estimators: 200
+        max_depth: 10
+        min_samples_split: 5
+        min_samples_leaf: 2
+
+  # Fusion models (multi-task, ensemble)
+  fusion:
+    - name: "DeepSurv"
+      type: "neural_network"
+      architecture:
+        hidden_dims: [64, 32, 16]
+        dropout_rate: 0.3
+        activation: "relu"
+        output_activation: "linear"
+      hyperparams:
+        batch_size: 32
+        epochs: 100
+        learning_rate: 0.001
+        optimizer: "adam"
+        loss: "cox_ph_loss"
+
+    - name: "DeepHit"
+      type: "neural_network"
+      architecture:
+        hidden_dims: [64, 32]
+        dropout_rate: 0.3
+        activation: "relu"
+      hyperparams:
+        batch_size: 32
+        epochs: 100
+        learning_rate: 0.001
+        optimizer: "adam"
+
+# ============================================================================
+# EVALUATION CONFIGURATION
+# ============================================================================
+evaluation:
+  # Cross-validation strategy
+  cross_validation:
+    strategy: "stratified_time_aware"
+    n_outer_folds: 5
+    n_inner_folds: 3
+    test_size: 0.2
+    random_state: 42
+    time_aware: true  # Stratify on survival quartiles
+    patient_level_splits: true
+
+  # Metrics
+  metrics:
+    primary: "concordance_index"  # c-index
+    secondary:
+      - "integrated_brier_score"
+      - "cumulative_auc"
+      - "hazard_ratio"
+    cutoff_metrics:
+      - "specificity"
+      - "sensitivity"
+
+  # Risk stratification
+  risk_stratification:
+    method: "median_split"  # median_split, tertile, quartile, optimal_cutoff
+    cutoffs: [0.5]
+    min_group_size: 10
+
+  # Validation
+  validation:
+    evaluate_internal: true
+    evaluate_external: true
+    calibration_plots: true
+    roc_curves: true
+    survival_curves: true
+
+# ============================================================================
+# EXPERIMENT & SEARCH CONFIGURATION
+# ============================================================================
+experiment:
+  # HPO configuration
+  hyperparameter_optimization:
+    enabled: true
+    fixed_search_budget: 100  # Total number of configurations to evaluate
+    timeout_minutes: 1440  # 24 hours
+
+    # Algorithm selection
+    algorithm: "bayesian"  # bayesian, random, grid, population_based
+
+    # Search space definition (minimal example)
+    search_space:
+      xgboost_learning_rate: [0.01, 0.1]
+      xgboost_max_depth: [4, 8]
+      catboost_learning_rate: [0.01, 0.1]
+      catboost_depth: [4, 8]
+      rf_max_depth: [5, 15]
+
+  # Early stopping
+  early_stopping:
+    enabled: true
+    patience: 5
+    metric: "concordance_index"
+    mode: "max"
+
+  # Experimental tracking
+  tracking:
+    experiment_name: "mm_risk_signature_v1"
+    save_models: true
+    save_predictions: true
+    log_artifacts: true
+    artifact_limit_mb: 500
+
+  # Reproducibility
+  reproducibility:
+    seed: 42
+    deterministic: true
+    set_deterministic_algorithms: true
+
+# ============================================================================
+# MLflow CONFIGURATION
+# ============================================================================
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  backend_store_uri: "file:./mlruns"
+  artifact_root: "./mlruns/artifacts"
+
+  # Experiment configuration
+  experiment:
+    name: "mm_risk_signature_v1"
+    tags:
+      project: "mm_transcriptomics"
+      phase: "development"
+      version: "0.1.0"
+
+  # Model registry
+  model_registry:
+    enabled: true
+    model_name: "mm_risk_signature"
+    stages: ["Staging", "Production", "Archived"]
+    description: "Multiple myeloma risk signature model"
+
+# ============================================================================
+# WEIGHTS & BIASES CONFIGURATION (Optional)
+# ============================================================================
+wandb:
+  enabled: false
+  project: "mm-transcriptomics"
+  entity: "research-group"
+  mode: "online"  # online, offline, disabled
+
+# ============================================================================
+# DVC CONFIGURATION
+# ============================================================================
+dvc:
+  remote:
+    name: "local_storage"
+    url: "./dvc_storage"
+
+  cache:
+    dir: ".dvc/cache"
+    type: "local"
+
+# ============================================================================
+# LOGGING & OUTPUT
+# ============================================================================
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/pipeline.log"
+  file_level: "DEBUG"
+  max_bytes: 104857600  # 100 MB
+  backup_count: 5
+
+output:
+  results_dir: "outputs"
+  report_dir: "outputs/reports"
+  figures_dir: "outputs/figures"
+  models_dir: "outputs/models"
+  predictions_dir: "outputs/predictions"
+  format: ["html", "pdf", "markdown"]
+
+# ============================================================================
+# COMPUTE CONFIGURATION
+# ============================================================================
+compute:
+  backend: "local"  # local, slurm, cloud
+  n_jobs: -1  # -1 for all CPUs
+  gpu_enabled: false
+  gpu_device_ids: [0]
+  batch_size: 32
+
+  # Ray Tune configuration
+  ray:
+    num_samples: 1
+    num_workers: 4
+    use_gpu: false
+
+  # Dask configuration
+  dask:
+    n_workers: 4
+    threads_per_worker: 2
+    memory_limit: "4GB"
+
+# ============================================================================
+# SLURM CONFIGURATION (for HPC)
+# ============================================================================
+slurm:
+  enabled: false
+  job_name: "mm_pipeline"
+  partition: "gpu"  # or cpu
+  time: "24:00:00"
+  nodes: 1
+  ntasks_per_node: 4
+  gpus_per_node: 1
+  cpus_per_task: 4
+  memory: "64G"
+  modules:
+    - "cuda/12.0"
+    - "gcc/11.3.0"
