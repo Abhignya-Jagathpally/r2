@@ -2,6 +2,12 @@ process preprocess_arrays {
     tag "${dataset.name}"
     publishDir "${params.outdir}/standardized", mode: 'copy'
 
+    container 'biocontainers/bioconda:latest'
+
+    cpus 4
+    memory '16 GB'
+    time '3h'
+
     input:
     tuple val(dataset), path(expression), path(phenotype)
 
@@ -10,15 +16,13 @@ process preprocess_arrays {
 
     script:
     """
-    python -c "
-import pandas as pd
-from src.preprocessing.normalization import ExpressionNormalizer, NormalizationContract
-contract = NormalizationContract()
-normalizer = ExpressionNormalizer(contract=contract)
-expr = pd.read_parquet('${expression}')
-norm, _ = normalizer.normalize_pipeline(expr, platform_type='array')
-norm.to_parquet('${dataset.name}_normalized.parquet')
-"
+    python "${baseDir}/scripts/preprocess_all.py" \\
+        --input_expr "${expression}" \\
+        --input_pheno "${phenotype}" \\
+        --platform "array" \\
+        --dataset_name "${dataset.name}" \\
+        --output "${dataset.name}_normalized.parquet" \\
+        --config_path "${baseDir}/config/pipeline_config.yaml"
     """
 }
 
@@ -26,6 +30,12 @@ process preprocess_rnaseq {
     tag "${dataset.name}"
     publishDir "${params.outdir}/standardized", mode: 'copy'
 
+    container 'biocontainers/bioconda:latest'
+
+    cpus 4
+    memory '16 GB'
+    time '3h'
+
     input:
     tuple val(dataset), path(expression), path(phenotype)
 
@@ -34,14 +44,12 @@ process preprocess_rnaseq {
 
     script:
     """
-    python -c "
-import pandas as pd
-from src.preprocessing.normalization import ExpressionNormalizer, NormalizationContract
-contract = NormalizationContract()
-normalizer = ExpressionNormalizer(contract=contract)
-expr = pd.read_parquet('${expression}')
-norm, _ = normalizer.normalize_pipeline(expr, platform_type='rnaseq')
-norm.to_parquet('${dataset.name}_normalized.parquet')
-"
+    python "${baseDir}/scripts/preprocess_all.py" \\
+        --input_expr "${expression}" \\
+        --input_pheno "${phenotype}" \\
+        --platform "rnaseq" \\
+        --dataset_name "${dataset.name}" \\
+        --output "${dataset.name}_normalized.parquet" \\
+        --config_path "${baseDir}/config/pipeline_config.yaml"
     """
 }

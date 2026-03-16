@@ -2,6 +2,12 @@ process download_geo_data {
     tag "${dataset.name}"
     publishDir "${params.outdir}/raw", mode: 'copy'
 
+    container 'biocontainers/bioconda:latest'
+
+    cpus 2
+    memory '8 GB'
+    time '2h'
+
     input:
     val dataset
 
@@ -10,10 +16,10 @@ process download_geo_data {
 
     script:
     """
-    python -c "
-from src.preprocessing.download_geo import GEODownloader
-dl = GEODownloader(output_dir='.')
-dl.download_dataset('${dataset.name}')
-"
+    python "${baseDir}/scripts/download_geo_data.py" \\
+        --dataset "${dataset.name}" \\
+        --output_dir "." \\
+        --output_expr "${dataset.name}_expression.parquet" \\
+        --output_pheno "${dataset.name}_phenotype.csv"
     """
 }

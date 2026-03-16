@@ -261,7 +261,10 @@ class RandomSurvivalForestModel(BaseSurvivalModel):
         cv: int = 5,
     ) -> Tuple[Dict, float]:
         """
-        Grid search for hyperparameters.
+        Grid search for hyperparameters with proper cross-validation.
+
+        IMPORTANT: Each CV fold creates a fresh model. Tree-based models don't
+        require feature scaling, so no scaler leakage concerns here.
 
         Parameters
         ----------
@@ -318,7 +321,7 @@ class RandomSurvivalForestModel(BaseSurvivalModel):
                 y_time_test = y_time_array[test_idx]
                 y_event_test = y_event_array[test_idx]
 
-                # Fit with these parameters
+                # Fresh model for each fold - no scaler leakage
                 model = RandomSurvivalForestModel(**params, random_state=self.random_state)
                 model.fit(X_train, y_time_train, y_event_train)
 

@@ -123,35 +123,66 @@ class CrossStudyBenchmark:
         """
         Leave-one-study-out cross-validation.
 
+        Trains on all studies except one, evaluates on held-out study.
+        Repeats for each study. Provides per-study and aggregate metrics.
+
         Parameters
         ----------
         X : array-like or DataFrame
-            Feature matrix.
+            Feature matrix (n_samples, n_features).
         y_time : array-like
-            Survival times.
+            Survival times (n_samples,).
         y_event : array-like
-            Event indicators.
+            Event indicators (n_samples,) where 1=event, 0=censored.
         study_ids : array-like
-            Study ID per sample.
+            Study ID per sample. Must have at least 2 unique values.
         models : dict
-            Model name -> model instance.
+            Model name -> model instance (must have fit() and predict_risk()).
 
         Returns
         -------
         results : DataFrame
-            LOSO-CV results.
+            LOSO-CV results with columns:
+            - model: model name
+            - test_study: held-out study ID
+            - n_train: number of training samples (from other studies)
+            - n_test: number of test samples (from held-out study)
+            - n_events_test: number of events in test study
+            - c_index: concordance index on test study
+
+        Raises
+        ------
+        ValueError
+            If fewer than 2 unique studies or incompatible array sizes.
         """
         X_array = np.asarray(X)
         y_time_array = np.asarray(y_time)
         y_event_array = np.asarray(y_event)
         study_ids_array = np.asarray(study_ids)
 
+        # Validate inputs
+        if len(X_array) != len(y_time_array):
+            raise ValueError(
+                f"X and y_time must have same length. "
+                f"Got {len(X_array)} and {len(y_time_array)}"
+            )
+        if len(X_array) != len(y_event_array):
+            raise ValueError(
+                f"X and y_event must have same length. "
+                f"Got {len(X_array)} and {len(y_event_array)}"
+            )
+
+        # Initialize splitter and get splits
         splitter = LeaveOneStudyOutSplitter()
         splits = splitter.split(X_array, study_ids_array)
         study_names = splitter.get_study_names()
 
+        if len(splits) == 0:
+            raise ValueError("LeaveOneStudyOutSplitter produced no splits.")
+
         results_list = []
 
+        # Iterate through LOSO splits
         for (train_idx, test_idx), study_name in zip(splits, study_names):
             X_train, X_test = X_array[train_idx], X_array[test_idx]
             y_time_train = y_time_array[train_idx]
@@ -159,14 +190,15 @@ class CrossStudyBenchmark:
             y_time_test = y_time_array[test_idx]
             y_event_test = y_event_array[test_idx]
 
+            # Evaluate each model on this held-out study
             for model_name, model in models.items():
-                # Fit on training studies
+                # Fit on training studies (all except test_study)
                 model.fit(X_train, y_time_train, y_event_train)
 
                 # Predict on held-out study
                 predictions = model.predict_risk(X_test)
 
-                # Evaluate
+                # Evaluate concordance index
                 c_index = SurvivalMetrics.concordance_index(
                     y_event_test,
                     y_time_test,
@@ -178,7 +210,7 @@ class CrossStudyBenchmark:
                     "test_study": study_name,
                     "n_train": len(X_train),
                     "n_test": len(X_test),
-                    "n_events_test": y_event_test.sum(),
+                    "n_events_test": int(np.asarray(y_event_test).sum()),
                     "c_index": c_index,
                 })
 

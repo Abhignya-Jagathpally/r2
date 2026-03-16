@@ -290,13 +290,25 @@ class StratifiedTimeAwareSplitter:
 
 class LeaveOneStudyOutSplitter:
     """
-    Leave-one-study-out (LOSO) cross-validation.
+    Leave-one-study-out (LOSO) cross-validation splitter.
 
-    For multi-cohort datasets, validate on held-out cohorts.
+    For multi-cohort datasets, validates model generalization across studies.
+    Trains on all studies except one (held-out test study) and evaluates on the
+    held-out study. Generates one split per unique study.
+
+    This prevents overfitting to study-specific effects and provides a realistic
+    cross-study generalization metric.
     """
 
     def __init__(self):
-        """Initialize LOSO splitter."""
+        """
+        Initialize LOSO splitter.
+
+        Attributes
+        ----------
+        studies : ndarray or None
+            Unique study identifiers (populated after split() is called)
+        """
         self.studies = None
 
     def split(
@@ -307,34 +319,80 @@ class LeaveOneStudyOutSplitter:
         """
         Generate LOSO splits.
 
+        For each unique study, creates one split where:
+        - Test set: all samples from that study
+        - Training set: all samples from other studies
+
         Parameters
         ----------
         X : array-like or DataFrame
-            Feature matrix.
-        study_ids : array-like
-            Study ID per sample (e.g., 'CoMMpass', 'GSE24080').
+            Feature matrix (n_samples, n_features).
+        study_ids : array-like, shape (n_samples,)
+            Study ID per sample (e.g., 'CoMMpass', 'GSE24080', or integer indices).
 
         Returns
         -------
         splits : list of tuples
-            Train on all studies except one, test on held-out study.
+            Each tuple: (train_indices, test_indices).
+            Length equals number of unique studies.
+
+        Raises
+        ------
+        ValueError
+            If X and study_ids have incompatible lengths.
         """
         study_ids = np.asarray(study_ids)
+        X_n_samples = len(X) if isinstance(X, pd.DataFrame) else X.shape[0]
+
+        if len(study_ids) != X_n_samples:
+            raise ValueError(
+                f"X and study_ids must have same length. "
+                f"Got X: {X_n_samples}, study_ids: {len(study_ids)}"
+            )
+
         self.studies = np.unique(study_ids)
+        n_studies = len(self.studies)
+
+        if n_studies == 1:
+            raise ValueError(
+                "Cannot perform LOSO with only one study. "
+                "Need at least 2 unique study IDs."
+            )
+
         splits = []
 
         for test_study in self.studies:
             train_idx = np.where(study_ids != test_study)[0]
             test_idx = np.where(study_ids == test_study)[0]
 
-            if len(test_idx) > 0:
+            # Skip if test set is empty (shouldn't happen with np.unique)
+            if len(test_idx) > 0 and len(train_idx) > 0:
                 splits.append((train_idx, test_idx))
 
         return splits
 
     def get_study_names(self) -> List[str]:
-        """Get unique study names."""
-        return list(self.studies) if self.studies is not None else []
+        """
+        Get unique study names/IDs in order.
+
+        Must be called after split() to populate studies.
+
+        Returns
+        -------
+        study_names : list of str
+            Unique study identifiers.
+
+        Raises
+        ------
+        RuntimeError
+            If called before split() is called.
+        """
+        if self.studies is None:
+            raise RuntimeError(
+                "get_study_names() called before split(). "
+                "Call split() first to populate study names."
+            )
+        return [str(s) for s in self.studies]
 
 
 class NestedCVSplitter:

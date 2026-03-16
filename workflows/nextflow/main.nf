@@ -81,38 +81,49 @@ workflow {
 
     pathway_scores = compute_pathway_scores(all_preprocessed)
 
+    // Collect all pathway outputs into single file for model training
+    pathway_inputs = pathway_scores
+        .map { it[1] }
+        .collect()
+
     // ========================================================================
     // Step 4: Model Training
     // ========================================================================
     log.info "Step 4: Training survival models..."
 
-    // Baseline models
-    baselines = train_baselines(pathway_scores)
+    // Baseline models (processes all pathway scores together)
+    baselines = train_baselines(pathway_inputs)
 
     // Modern gradient boosting models
-    modern = train_modern_models(pathway_scores)
+    modern = train_modern_models(pathway_inputs)
 
-    // Fusion/deep learning models
-    fusion = train_fusion_models(pathway_scores)
-
-    // Combine all trained models
-    all_models = baselines
-        .concat(modern)
-        .concat(fusion)
+    // Fusion/deep learning models (depends on baseline and modern)
+    fusion = train_fusion_models(baselines.out[0], modern.out[0], pathway_inputs)
 
     // ========================================================================
     // Step 5: Cross-Study Evaluation
     // ========================================================================
     log.info "Step 5: Evaluating across studies..."
 
-    results = evaluate_cross_study(all_models, pathway_scores)
+    evaluation_results = evaluate_cross_study(
+        baselines.out[0],
+        modern.out[0],
+        fusion.out[0],
+        pathway_inputs
+    )
 
     // ========================================================================
     // Step 6: Report Generation
     // ========================================================================
     log.info "Step 6: Generating comprehensive report..."
 
-    final_report = generate_report(results)
+    evaluation_results
+        .map { [it[0], it[2], it[3]] }
+        .set { report_inputs }
+
+    final_report = generate_report(report_inputs)
+
+    log.info "Pipeline completed successfully!"
 }
 
 // ============================================================================

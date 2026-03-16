@@ -1,0 +1,164 @@
+================================================================================
+R2 PIPELINE DATA ACQUISITION FIXES - SUMMARY
+================================================================================
+
+FILES MODIFIED:
+  1. /sessions/sweet-stoic-cray/r2-fresh/src/preprocessing/download_geo.py
+     - Added retry logic with exponential backoff
+     - Enhanced CoMMpass dataset support with comprehensive validation
+     - Added command-line argument parsing
+     - Line count: 850 lines (was ~410)
+
+FILES CREATED:
+  1. /sessions/sweet-stoic-cray/r2-fresh/DATA_ACQUISITION_FIXES.md
+     - Comprehensive documentation of all changes
+     - Technical details on retry logic and CoMMpass handler
+     - Usage examples and testing recommendations
+
+  2. /sessions/sweet-stoic-cray/r2-fresh/COMMPASS_QUICK_START.md
+     - User-friendly quick start guide
+     - Step-by-step instructions for CoMMpass registration/download
+     - Output file descriptions and troubleshooting
+
+  3. /sessions/sweet-stoic-cray/r2-fresh/CHANGES_SUMMARY.txt
+     - This file
+
+================================================================================
+FIX 1: EXPONENTIAL BACKOFF RETRY LOGIC
+================================================================================
+
+WHAT: Custom retry decorator without external dependencies
+WHERE: Lines 46-111 (decorator), Lines 127-176 (applied to GEO download)
+WHY: Handle transient network failures gracefully
+
+IMPLEMENTATION:
+  - retry_with_backoff() decorator with:
+    * 3 retry attempts (configurable)
+    * 5s, 10s, 20s delays (exponential backoff)
+    * 30s timeout per operation
+    * Catches: RequestException, TimeoutError, ConnectionError, OSError
+    * Detailed logging on every attempt
+
+USAGE:
+  - Automatic! No code changes needed
+  - All GEO dataset downloads use retry logic
+  - Failures logged with clear attempt information
+
+TESTING:
+  ✓ Verified decorator catches and retries network errors
+  ✓ Verified exponential backoff sequence
+  ✓ Verified final failure after max retries
+  ✓ Verified non-retryable errors fail immediately
+
+================================================================================
+FIX 2: ENHANCED COMMPASS SUPPORT
+================================================================================
+
+WHAT: Complete CoMMpass dataset integration with validation & parsing
+WHERE: Lines 469-845 (8 new methods + updated main)
+WHY: Provide clear guidance and reliable processing of manual downloads
+
+NEW METHODS:
+  1. _print_commpass_instructions() - ASCII guide with registration steps
+  2. _validate_commpass_files() - Check all required files exist
+  3. _load_commpass_expression() - Parse gene expression matrix
+  4. _load_commpass_clinical() - Parse and standardize clinical data
+  5. _load_commpass_treatment() - Parse treatment response data
+  6. download_commpass() - Main public method with full workflow
+  7. download_commpass_info() - Backward compatibility wrapper
+  8. Updated main() - Command-line argument support
+
+EXPECTED FILES:
+  - MMRF_CoMMpass_IA21_E74GTF_Salmon_entrezID_TPM_matrix.tsv (expression)
+  - MMRF_CoMMpass_IA21_PER_PATIENT.tsv (clinical)
+  - MMRF_CoMMpass_IA21_STAND_ALONE_TRTRESP.tsv (treatment response)
+
+OUTPUT STRUCTURE:
+  ./data/raw/MMRF_CoMMpass_IA21/
+  ├── MMRF_CoMMpass_IA21_expression.parquet
+  ├── MMRF_CoMMpass_IA21_clinical.csv
+  ├── MMRF_CoMMpass_IA21_treatment.csv
+  └── MMRF_CoMMpass_IA21_metadata.json
+
+COMMAND-LINE USAGE:
+  python src/preprocessing/download_geo.py
+  python src/preprocessing/download_geo.py --commpass-dir /path/to/files
+  python src/preprocessing/download_geo.py --help
+
+PROGRAMMATIC USAGE:
+  downloader = GEODownloader(output_dir="./data/raw")
+  expr, clinical, treatment = downloader.download_commpass(
+      commpass_dir="/path/to/downloaded/files"
+  )
+
+ERROR HANDLING:
+  ✓ Missing directory → Print instructions
+  ✓ Missing files → List specific missing files
+  ✓ Parse errors → Log specific errors
+  ✓ All failures return None gracefully
+
+================================================================================
+CODE QUALITY METRICS
+================================================================================
+
+SYNTAX: ✓ Verified with python -m py_compile
+TESTING: ✓ Retry logic tested with mock functions
+DEPENDENCIES: ✓ No new external dependencies added
+TYPE HINTS: ✓ Full type annotations throughout
+LOGGING: ✓ Comprehensive logging at INFO and ERROR levels
+DOCUMENTATION: ✓ Docstrings for all public methods
+BACKWARD COMPATIBILITY: ✓ Existing code still works
+
+================================================================================
+USAGE EXAMPLES
+================================================================================
+
+EXAMPLE 1: Download GEO datasets only (existing functionality preserved)
+  downloader = GEODownloader(output_dir="./data/raw")
+  results = downloader.download_all()
+
+EXAMPLE 2: Download GEO + process CoMMpass
+  downloader = GEODownloader(output_dir="./data/raw")
+  results = downloader.download_all()
+  expr, clinical, treatment = downloader.download_commpass(
+      commpass_dir="~/data/commpass"
+  )
+
+EXAMPLE 3: Use command line
+  python src/preprocessing/download_geo.py --commpass-dir ~/data/commpass
+
+EXAMPLE 4: Get CoMMpass instructions
+  from src.preprocessing.download_geo import GEODownloader
+  GEODownloader()._print_commpass_instructions()
+
+================================================================================
+BENEFITS
+================================================================================
+
+FIX 1 - Retry Logic:
+  ✓ Handles transient network failures without manual intervention
+  ✓ Reduces false negatives in data acquisition
+  ✓ Configurable backoff parameters
+  ✓ Production-grade error logging
+  ✓ No external dependencies
+
+FIX 2 - CoMMpass Support:
+  ✓ Clear step-by-step registration guide
+  ✓ Automatic file validation before processing
+  ✓ Consistent data format with GEO datasets
+  ✓ Support for gene expression, clinical, and treatment data
+  ✓ Comprehensive error messages and logging
+  ✓ Command-line and programmatic interfaces
+  ✓ Backward compatibility maintained
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Review documentation in DATA_ACQUISITION_FIXES.md
+2. Test retry logic with simulated network failures
+3. Register at MMRF portal and download CoMMpass files
+4. Test CoMMpass processing with --commpass-dir argument
+5. Integrate CoMMpass data with existing GEO analysis pipeline
+
+================================================================================

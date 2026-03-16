@@ -445,7 +445,10 @@ class CatBoostSurvivalModel(BaseSurvivalModel):
         cv: int = 5,
     ) -> Tuple[Dict, float]:
         """
-        Grid search for hyperparameters.
+        Grid search for hyperparameters with proper cross-validation.
+
+        IMPORTANT: Each CV fold creates a fresh model with scaler fit on
+        training fold only. No data leakage from test fold to scaler.
 
         Parameters
         ----------
@@ -499,6 +502,7 @@ class CatBoostSurvivalModel(BaseSurvivalModel):
                 y_time_test = y_time_array[test_idx]
                 y_event_test = y_event_array[test_idx]
 
+                # Fresh model for each fold - scaler fit on train fold only
                 model = CatBoostSurvivalModel(
                     **params,
                     random_state=self.random_state,

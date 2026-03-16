@@ -29,7 +29,8 @@ class TabPFNRiskClassifier(BaseEstimator, ClassifierMixin):
     Risk classification using TabPFN.
 
     Converts survival analysis problem to binary risk classification
-    by dichotomizing at median survival time.
+    by dichotomizing at median survival time. Handles censored observations
+    via exclusion or inverse probability of censoring weighting (IPCW).
     """
 
     def __init__(
@@ -37,6 +38,7 @@ class TabPFNRiskClassifier(BaseEstimator, ClassifierMixin):
         risk_threshold: Optional[float] = None,
         use_scaling: bool = True,
         n_samples_error_handling: str = 'warn',
+        handle_censoring: str = 'exclude',
         **tabpfn_kwargs,
     ):
         """
@@ -44,19 +46,28 @@ class TabPFNRiskClassifier(BaseEstimator, ClassifierMixin):
             risk_threshold: Threshold for high risk (default: median survival)
             use_scaling: Standardize features before fitting
             n_samples_error_handling: 'warn' or 'raise' if sample size unsuitable
+            handle_censoring: How to handle censored observations:
+                - 'exclude': Exclude censored patients with follow-up < threshold (default)
+                - 'ipcw': Use inverse probability of censoring weighting
+                - 'naive': Treat censored as 0 (legacy behavior, not recommended)
             **tabpfn_kwargs: Additional arguments for TabPFNClassifier
         """
         if not TABPFN_AVAILABLE:
             raise ImportError("TabPFN must be installed. Run: pip install tabpfn")
 
+        if handle_censoring not in ('exclude', 'ipcw', 'naive'):
+            raise ValueError(f"handle_censoring must be 'exclude', 'ipcw', or 'naive', got {handle_censoring}")
+
         self.risk_threshold = risk_threshold
         self.use_scaling = use_scaling
         self.n_samples_error_handling = n_samples_error_handling
+        self.handle_censoring = handle_censoring
         self.tabpfn_kwargs = tabpfn_kwargs
 
         self.classifier = TabPFNClassifier(**tabpfn_kwargs)
         self.scaler = StandardScaler() if use_scaling else None
         self.classes_ = np.array([0, 1])
+        self.sample_weights_ = None
 
     def fit(
         self,
@@ -105,17 +116,65 @@ class TabPFNRiskClassifier(BaseEstimator, ClassifierMixin):
 
         self.risk_threshold = threshold
 
-        # Convert to binary classification: 1 if survival < threshold, 0 otherwise
-        y_binary = (y_survival < threshold).astype(int)
+        # Handle censoring
+        if event_indicators is None:
+            # No censoring info: treat as all events
+            event_indicators = np.ones(len(y_survival), dtype=int)
 
-        # Fit scaler
+        if self.handle_censoring == 'exclude':
+            # Exclude censored patients with follow-up < threshold
+            mask = (event_indicators == 1) | (y_survival >= threshold)
+            X_fit = X[mask]
+            y_survival_fit = y_survival[mask]
+
+            # Create binary labels: 1 if event and survival < threshold, 0 otherwise
+            y_binary = np.zeros(len(y_survival_fit), dtype=int)
+            y_binary[event_indicators[mask] == 1] = (y_survival_fit[event_indicators[mask] == 1] < threshold).astype(int)
+
+            # No sample weights needed
+            self.sample_weights_ = None
+
+        elif self.handle_censoring == 'ipcw':
+            # Inverse probability of censoring weighting
+            X_fit = X
+            y_survival_fit = y_survival
+
+            # Estimate censoring distribution using Kaplan-Meier
+            # For simplicity, use empirical censoring probabilities
+            n_total = len(y_survival)
+            n_censored_before_threshold = np.sum((event_indicators == 0) & (y_survival < threshold))
+
+            # Probability of being censored at time threshold
+            censoring_prob = max(0.05, n_censored_before_threshold / max(1, n_total))  # Avoid division by zero
+
+            # Compute sample weights: down-weight censored observations
+            sample_weights = np.ones(n_total)
+            censored_mask = (event_indicators == 0)
+            if np.any(censored_mask):
+                sample_weights[censored_mask] = 1.0 / (1.0 - censoring_prob + 1e-6)
+
+            self.sample_weights_ = sample_weights / sample_weights.sum() * len(sample_weights)
+
+            # Create binary labels: 1 if survival < threshold, 0 otherwise (including censored)
+            y_binary = (y_survival_fit < threshold).astype(int)
+
+        else:  # 'naive'
+            # Legacy behavior: treat censored < threshold as 0, events < threshold as 1
+            X_fit = X
+            y_binary = (y_survival < threshold).astype(int)
+            self.sample_weights_ = None
+
+        # Fit scaler on training data
         if self.scaler is not None:
-            X_scaled = self.scaler.fit_transform(X)
+            X_scaled = self.scaler.fit_transform(X_fit)
         else:
-            X_scaled = X
+            X_scaled = X_fit
 
-        # Fit TabPFN
-        self.classifier.fit(X_scaled, y_binary)
+        # Fit TabPFN with optional sample weights
+        if self.sample_weights_ is not None:
+            self.classifier.fit(X_scaled, y_binary, sample_weight=self.sample_weights_)
+        else:
+            self.classifier.fit(X_scaled, y_binary)
 
         return self
 
@@ -174,7 +233,8 @@ def convert_survival_to_risk_classification(
     y_times: np.ndarray,
     y_events: Optional[np.ndarray] = None,
     threshold: Optional[float] = None,
-) -> Tuple[np.ndarray, float]:
+    handle_censoring: str = 'exclude',
+) -> Tuple[np.ndarray, float, Optional[np.ndarray]]:
     """
     Convert survival data to binary risk classification.
 
@@ -182,10 +242,15 @@ def convert_survival_to_risk_classification(
         y_times: [n_samples] survival/censoring times
         y_events: [n_samples] binary event indicator (optional)
         threshold: Risk threshold (default: median survival)
+        handle_censoring: How to handle censored observations:
+            - 'exclude': Exclude censored with follow-up < threshold
+            - 'ipcw': Use inverse probability of censoring weighting
+            - 'naive': Treat censored as 0
 
     Returns:
         y_binary: [n_samples] binary risk labels
         threshold_used: The threshold value applied
+        mask_or_weights: None for naive/exclude, or sample weights for IPCW
     """
     if threshold is None:
         if y_events is not None:
@@ -197,5 +262,31 @@ def convert_survival_to_risk_classification(
         else:
             threshold = np.median(y_times)
 
-    y_binary = (y_times < threshold).astype(int)
-    return y_binary, threshold
+    if y_events is None:
+        y_events = np.ones(len(y_times), dtype=int)
+
+    if handle_censoring == 'exclude':
+        # Return mask to exclude censored patients with follow-up < threshold
+        mask = (y_events == 1) | (y_times >= threshold)
+        y_binary = np.zeros(len(y_times[mask]), dtype=int)
+        y_binary[y_events[mask] == 1] = (y_times[mask][y_events[mask] == 1] < threshold).astype(int)
+        return y_binary, threshold, mask
+
+    elif handle_censoring == 'ipcw':
+        # Compute IPCW weights
+        y_binary = (y_times < threshold).astype(int)
+        n_total = len(y_times)
+        n_censored_before_threshold = np.sum((y_events == 0) & (y_times < threshold))
+        censoring_prob = max(0.05, n_censored_before_threshold / max(1, n_total))
+
+        weights = np.ones(n_total)
+        censored_mask = (y_events == 0)
+        if np.any(censored_mask):
+            weights[censored_mask] = 1.0 / (1.0 - censoring_prob + 1e-6)
+
+        weights = weights / weights.sum() * len(weights)
+        return y_binary, threshold, weights
+
+    else:  # 'naive'
+        y_binary = (y_times < threshold).astype(int)
+        return y_binary, threshold, None

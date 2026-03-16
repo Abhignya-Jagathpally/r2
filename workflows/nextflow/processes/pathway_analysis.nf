@@ -2,6 +2,12 @@ process compute_pathway_scores {
     tag "${dataset.name}"
     publishDir "${params.outdir}/pathways", mode: 'copy'
 
+    container 'biocontainers/bioconda:latest'
+
+    cpus 8
+    memory '32 GB'
+    time '4h'
+
     input:
     tuple val(dataset), path(normalized)
 
@@ -10,13 +16,12 @@ process compute_pathway_scores {
 
     script:
     """
-    python -c "
-import pandas as pd
-from src.preprocessing.pathway_scoring import PathwayScorer
-expr = pd.read_parquet('${normalized}')
-scorer = PathwayScorer(method='ssgsea')
-scores, meta = scorer.score_pathways(expr, pathway_source='all')
-scores.to_parquet('${dataset.name}_pathways.parquet')
-"
+    python "${baseDir}/scripts/run_preprocessing.py" \\
+        --input "${normalized}" \\
+        --dataset_name "${dataset.name}" \\
+        --output "${dataset.name}_pathways.parquet" \\
+        --pathway_method "ssgsea" \\
+        --pathway_databases "Hallmark,KEGG,Reactome,curated_MM" \\
+        --config_path "${baseDir}/config/pipeline_config.yaml"
     """
 }

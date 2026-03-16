@@ -400,6 +400,11 @@ class SurvivalModelCV:
         """
         Fit model on each fold and predict on held-out test sets.
 
+        Implements proper cross-validation with no data leakage:
+        - Each fold gets a fresh model instance
+        - Scalers are fit on training fold only
+        - No information flows from test fold to training
+
         Parameters
         ----------
         X : array-like or DataFrame
@@ -431,10 +436,11 @@ class SurvivalModelCV:
             y_event_train = y_event_array[train_idx]
 
             # Create fresh model for this fold
+            # IMPORTANT: This ensures scaler is fit on train fold only
             model_fold = self.model.__class__(**self.model.get_params())
             model_fold.fit(X_train, y_time_train, y_event_train, **kwargs)
 
-            # Predictions
+            # Predictions (scaler transforms test fold independently)
             y_pred_train[train_idx] = model_fold.predict_risk(X_train)
             y_pred_test[test_idx] = model_fold.predict_risk(X_test)
 

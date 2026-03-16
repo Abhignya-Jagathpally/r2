@@ -2,17 +2,32 @@ process generate_report {
     tag "report"
     publishDir "${params.outdir}/reports", mode: 'copy'
 
+    container 'biocontainers/bioconda:latest'
+
+    cpus 4
+    memory '16 GB'
+    time '2h'
+
     input:
-    path results
+    path cross_study_evaluation
+    path risk_scores
+    path evaluation_metrics
 
     output:
-    path "pipeline_report.html"
+    tuple path("pipeline_report.html"), \\
+          path("pipeline_report.pdf"), \\
+          path("pipeline_report.md")
 
     script:
     """
-    python -c "
-html = '<html><body><h1>MM Pipeline Report</h1><p>See outputs/ for detailed results.</p></body></html>'
-open('pipeline_report.html', 'w').write(html)
-"
+    python "${baseDir}/scripts/generate_report.py" \\
+        --input_results "${cross_study_evaluation}" \\
+        --input_risk_scores "${risk_scores}" \\
+        --input_metrics "${evaluation_metrics}" \\
+        --output_html "pipeline_report.html" \\
+        --output_pdf "pipeline_report.pdf" \\
+        --output_markdown "pipeline_report.md" \\
+        --pipeline_version "0.1.0" \\
+        --config_path "${baseDir}/config/pipeline_config.yaml"
     """
 }

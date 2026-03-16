@@ -51,15 +51,20 @@ FUSION_MODELS = ["DeepSurv", "DeepHit"]
 
 rule all:
     input:
+        # Preprocessed data from all studies
         expand(os.path.join(DATA_PROCESSED, "{study}_preprocessed.h5ad"),
                study=TRAINING_STUDIES),
+        # Pathway scores from all studies and methods
         expand(os.path.join(DATA_PROCESSED, "{study}_{method}_scores.h5ad"),
                study=TRAINING_STUDIES,
                method=PATHWAY_METHODS),
+        # Baseline and modern models (save as pkl)
         expand(os.path.join(MODELS_DIR, "{model}_trained.pkl"),
                model=BASELINE_MODELS + MODERN_MODELS),
+        # Fusion/deep learning models (save as pt)
         expand(os.path.join(MODELS_DIR, "{model}_trained.pt"),
                model=FUSION_MODELS),
+        # Final evaluation and report
         os.path.join(RESULTS_DIR, "cross_study_evaluation.json"),
         os.path.join(REPORTS_DIR, "pipeline_report.html")
 
