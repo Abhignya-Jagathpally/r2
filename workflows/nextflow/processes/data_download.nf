@@ -2,7 +2,7 @@ process download_geo_data {
     tag "${dataset.name}"
     publishDir "${params.outdir}/raw", mode: 'copy'
 
-    container 'biocontainers/bioconda:latest'
+    container 'python:3.11-slim'
 
     cpus 2
     memory '8 GB'

@@ -2,7 +2,7 @@ process evaluate_cross_study {
     tag "evaluation"
     publishDir "${params.outdir}/evaluation", mode: 'copy'
 
-    container 'biocontainers/bioconda:latest'
+    container 'python:3.11-slim'
 
     cpus 8
     memory '32 GB'

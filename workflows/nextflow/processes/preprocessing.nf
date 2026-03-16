@@ -2,7 +2,7 @@ process preprocess_arrays {
     tag "${dataset.name}"
     publishDir "${params.outdir}/standardized", mode: 'copy'
 
-    container 'biocontainers/bioconda:latest'
+    container 'python:3.11-slim'
 
     cpus 4
     memory '16 GB'
@@ -30,7 +30,7 @@ process preprocess_rnaseq {
     tag "${dataset.name}"
     publishDir "${params.outdir}/standardized", mode: 'copy'
 
-    container 'biocontainers/bioconda:latest'
+    container 'python:3.11-slim'
 
     cpus 4
     memory '16 GB'

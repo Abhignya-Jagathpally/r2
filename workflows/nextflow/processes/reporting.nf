@@ -2,7 +2,7 @@ process generate_report {
     tag "report"
     publishDir "${params.outdir}/reports", mode: 'copy'
 
-    container 'biocontainers/bioconda:latest'
+    container 'python:3.11-slim'
 
     cpus 4
     memory '16 GB'

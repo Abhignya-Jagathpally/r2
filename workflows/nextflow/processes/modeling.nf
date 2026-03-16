@@ -2,7 +2,7 @@ process train_baselines {
     tag "baselines"
     publishDir "${params.outdir}/models", mode: 'copy'
 
-    container 'biocontainers/bioconda:latest'
+    container 'python:3.11-slim'
 
     cpus 8
     memory '32 GB'
@@ -33,7 +33,7 @@ process train_modern_models {
     tag "modern"
     publishDir "${params.outdir}/models", mode: 'copy'
 
-    container 'biocontainers/bioconda:latest'
+    container 'python:3.11-slim'
 
     cpus 8
     memory '32 GB'
@@ -65,7 +65,7 @@ process train_fusion_models {
     tag "fusion"
     publishDir "${params.outdir}/models", mode: 'copy'
 
-    container 'biocontainers/bioconda:latest'
+    container 'python:3.11-slim'
 
     cpus 8
     memory '32 GB'

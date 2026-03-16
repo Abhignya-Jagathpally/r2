@@ -28,8 +28,12 @@ jobs:
           pip install pytest pytest-cov
 
       - name: Run tests
+        env:
+          # R/GSVA not installed in CI — GSVA-dependent tests will be skipped.
+          # ssGSEA (gseapy) fallback is tested instead.
+          SKIP_R_TESTS: "1"
         run: |
-          pytest tests/ -v --tb=short -x
+          pytest tests/ -v --tb=short -x -k "not gsva"
 
       - name: Validate pipeline config
         run: |
